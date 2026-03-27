@@ -10,7 +10,6 @@
         android:id="@+id/iv_home_background"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:foreground="?attr/home_gradient_drawable"
         android:scaleType="centerCrop"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
@@ -22,7 +21,10 @@
         android:id="@+id/rv_home"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        android:clipToPadding="false"
         android:orientation="vertical"
+        android:paddingTop="56dp"
+        android:paddingBottom="12dp"
         app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
@@ -36,23 +38,45 @@
         layout="@layout/layout_is_loading_mobile"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <ImageView
-        android:id="@+id/iv_provider_logo"
-        android:layout_width="60dp"
-        android:layout_height="0dp"
-        android:background="@drawable/bg_provider_logo_home_mobile"
-        android:layout_marginStart="16dp"
-        android:layout_marginTop="16dp"
-        android:duplicateParentState="true"
-        android:padding="8dp"
-        android:importantForAccessibility="no"
-        app:layout_constraintDimensionRatio="1:1"
+    <FrameLayout
+        android:id="@+id/header_container"
+        android:layout_width="0dp"
+        android:layout_height="72dp"
+        android:background="@android:color/transparent"
+        android:elevation="24dp"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toTopOf="parent">
+
+        <ImageView
+            android:id="@+id/iv_provider_logo"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="top|start"
+            android:layout_marginStart="16dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_provider_logo_home_mobile"
+            android:duplicateParentState="true"
+            android:importantForAccessibility="no"
+            android:padding="6dp" />
+
+        <TextView
+            android:id="@+id/tv_header_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|start"
+            android:layout_marginStart="76dp"
+            android:layout_marginTop="22dp"
+            android:text="Home"
+            android:textColor="#FFFFFF"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+    </FrameLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

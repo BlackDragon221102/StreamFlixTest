@@ -26,6 +26,7 @@ import com.streamflixreborn.streamflix.models.TvShow
 import com.streamflixreborn.streamflix.ui.SpacingItemDecoration
 import com.streamflixreborn.streamflix.utils.CacheUtils
 import com.streamflixreborn.streamflix.utils.LoggingUtils
+import com.streamflixreborn.streamflix.utils.TopLevelTabFragment
 import com.streamflixreborn.streamflix.utils.UserPreferences // <-- IMPORT AÑADIDO
 import com.streamflixreborn.streamflix.utils.VoiceRecognitionHelper
 import com.streamflixreborn.streamflix.utils.dp
@@ -33,7 +34,7 @@ import com.streamflixreborn.streamflix.utils.hideKeyboard
 import com.streamflixreborn.streamflix.utils.viewModelsFactory
 import kotlinx.coroutines.launch
 
-class SearchMobileFragment : Fragment() {
+class SearchMobileFragment : Fragment(), TopLevelTabFragment {
 
     private var hasAutoCleared409: Boolean = false
 
@@ -138,12 +139,7 @@ class SearchMobileFragment : Fragment() {
                     val query = binding.etSearch.text.toString()
                     hideKeyboard()
 
-                    if (binding.swGlobalSearch.isChecked) {
-                        val currentLanguage = UserPreferences.currentProvider?.language ?: "es"
-                        viewModel.searchGlobal(query, currentLanguage)
-                    } else {
-                        viewModel.search(query)
-                    }
+                    viewModel.search(query)
                     return@setOnEditorActionListener true
                 }
                 return@setOnEditorActionListener false
@@ -211,6 +207,9 @@ class SearchMobileFragment : Fragment() {
                 SpacingItemDecoration(10.dp(requireContext()))
             )
         }
+
+        binding.swGlobalSearch.isChecked = false
+        binding.swGlobalSearch.visibility = View.GONE
     }
 
     private fun displaySearch(list: List<AppAdapter.Item>, hasMore: Boolean) {
@@ -267,4 +266,28 @@ class SearchMobileFragment : Fragment() {
         appAdapter.setOnLoadMoreListener(null) // Desactivamos la carga infinita en la búsqueda global
     }
     // ================================================================
+
+    override fun onTopLevelTabSelected(animate: Boolean) {
+        if (_binding == null) return
+
+        if (!animate) {
+            binding.rvSearch.scrollToPosition(0)
+            binding.rvSearch.post { binding.rvSearch.scrollToPosition(0) }
+            return
+        }
+
+        binding.root.animate().cancel()
+        binding.root.animate()
+            .alpha(0f)
+            .setDuration(200L)
+            .withEndAction {
+                binding.rvSearch.scrollToPosition(0)
+                binding.rvSearch.post { binding.rvSearch.scrollToPosition(0) }
+                binding.root.animate()
+                    .alpha(1f)
+                    .setDuration(200L)
+                    .start()
+            }
+            .start()
+    }
 }

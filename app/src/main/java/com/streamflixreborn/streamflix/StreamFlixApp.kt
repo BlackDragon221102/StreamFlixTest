@@ -22,6 +22,7 @@ class StreamFlixApp : Application() {
 
         // 1. Inizializzazione preferenze (con applicationContext)
         UserPreferences.setup(this)
+        UserPreferences.currentProvider = UserPreferences.currentProvider
         
         // 2. Configurazione DNS
         DnsResolver.setDnsUrl(UserPreferences.dohProviderUrl)

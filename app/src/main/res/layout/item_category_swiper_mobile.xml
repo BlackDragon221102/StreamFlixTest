@@ -5,160 +5,221 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <ImageView
-        android:id="@+id/iv_swiper_background"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:foreground="?attr/category_swiper_gradient_drawable"
-        android:scaleType="centerCrop"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        tools:ignore="ContentDescription" />
-
-    <TextView
-        android:id="@+id/tv_swiper_title"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="10dp"
-        android:layout_marginEnd="10dp"
-        android:layout_marginBottom="10dp"
-        android:gravity="center"
-        android:textColor="#FFFFFF"
-        android:textSize="20sp"
-        android:textStyle="bold"
-        app:layout_constraintBottom_toTopOf="@id/barrier1"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        tools:text="Title" />
-
-    <androidx.constraintlayout.widget.Barrier
-        android:id="@+id/barrier1"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        app:barrierDirection="top"
-        app:constraint_referenced_ids="tv_swiper_rating,tv_swiper_quality,tv_swiper_released,tv_swiper_tv_show_last_episode" />
-
-    <TextView
-        android:id="@+id/tv_swiper_tv_show_last_episode"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="10dp"
-        android:layout_marginBottom="16dp"
-        app:layout_constraintBottom_toTopOf="@id/tv_swiper_overview"
-        app:layout_constraintEnd_toStartOf="@id/tv_swiper_quality"
-        app:layout_constraintHorizontal_chainStyle="packed"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/barrier1"
-        tools:text="S1 E1" />
-
-    <TextView
-        android:id="@+id/tv_swiper_quality"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginBottom="16dp"
-        android:textAllCaps="true"
-        android:textColor="#FFFFFF"
-        android:textStyle="bold"
-        app:layout_constraintBottom_toTopOf="@id/tv_swiper_overview"
-        app:layout_constraintEnd_toStartOf="@id/tv_swiper_released"
-        app:layout_constraintStart_toEndOf="@id/tv_swiper_tv_show_last_episode"
-        app:layout_constraintTop_toBottomOf="@id/barrier1"
-        tools:text="HD"
-        tools:visibility="visible" />
-
-    <TextView
-        android:id="@+id/tv_swiper_released"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginBottom="16dp"
-        app:layout_constraintBottom_toTopOf="@id/tv_swiper_overview"
-        app:layout_constraintEnd_toStartOf="@id/iv_swiper_rating_icon"
-        app:layout_constraintStart_toEndOf="@id/tv_swiper_quality"
-        app:layout_constraintTop_toBottomOf="@id/barrier1"
-        tools:text="yyyy"
-        tools:visibility="visible" />
-
-    <ImageView
-        android:id="@+id/iv_swiper_rating_icon"
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cv_swiper_card"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:layout_marginStart="16dp"
-        android:src="@drawable/ic_star"
-        android:tint="#C0C0C0"
-        app:layout_constraintBottom_toBottomOf="@id/tv_swiper_rating"
-        app:layout_constraintDimensionRatio="1:1"
-        app:layout_constraintEnd_toStartOf="@id/tv_swiper_rating"
-        app:layout_constraintStart_toEndOf="@id/tv_swiper_released"
-        app:layout_constraintTop_toTopOf="@id/tv_swiper_rating"
-        tools:ignore="ContentDescription,UseAppTint" />
-
-    <TextView
-        android:id="@+id/tv_swiper_rating"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginEnd="10dp"
-        android:layout_marginBottom="16dp"
-        android:textColor="#FFFFFF"
-        app:layout_constraintBottom_toTopOf="@id/tv_swiper_overview"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toEndOf="@id/iv_swiper_rating_icon"
-        app:layout_constraintTop_toBottomOf="@id/barrier1"
-        tools:text="#.#" />
-
-    <TextView
-        android:id="@+id/tv_swiper_overview"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="10dp"
-        android:layout_marginEnd="10dp"
-        android:layout_marginBottom="26dp"
-        android:ellipsize="end"
-        android:gravity="center"
-        android:maxLines="2"
-        app:layout_constraintBottom_toTopOf="@id/btn_swiper_watch_now"
+        android:layout_marginTop="14dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="8dp"
+        app:cardBackgroundColor="#141414"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="10dp"
+        app:cardMaxElevation="16dp"
+        app:cardUseCompatPadding="false"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        tools:text="Overview" />
+        app:layout_constraintTop_toTopOf="parent">
 
-    <TextView
-        android:id="@+id/btn_swiper_watch_now"
-        style="@style/AppTheme.Widget.Mobile.Button"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="10dp"
-        android:layout_marginEnd="10dp"
-        android:layout_marginBottom="30dp"
-        android:text="@string/home_swiper_watch_now"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
 
-    <ProgressBar
-        android:id="@+id/pb_swiper_progress"
-        style="@android:style/Widget.ProgressBar.Horizontal"
-        android:layout_width="0dp"
-        android:layout_height="4dp"
-        android:layout_marginStart="16dp"
-        android:layout_marginTop="10dp"
-        android:layout_marginEnd="16dp"
-        android:backgroundTint="#CC646464"
-        android:progressTint="#FFFFFF"
-        app:layout_constraintEnd_toEndOf="@id/btn_swiper_watch_now"
-        app:layout_constraintStart_toStartOf="@id/btn_swiper_watch_now"
-        app:layout_constraintTop_toBottomOf="@id/btn_swiper_watch_now"
-        tools:progress="80" />
+            <ImageView
+                android:id="@+id/iv_swiper_background_fill"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:alpha="0.45"
+                android:scaleType="centerCrop"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                tools:ignore="ContentDescription" />
 
-    <LinearLayout
-        android:id="@+id/ll_dots_indicator"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginEnd="16dp"
-        android:orientation="horizontal"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+            <ImageView
+                android:id="@+id/iv_swiper_background"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:adjustViewBounds="true"
+                android:background="#000000"
+                android:foreground="?attr/category_swiper_gradient_drawable"
+                android:scaleType="fitCenter"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                tools:ignore="ContentDescription" />
+
+            <View
+                android:id="@+id/v_swiper_frame"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:background="@drawable/bg_swiper_frame_mobile"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <TextView
+                android:id="@+id/tv_swiper_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="18dp"
+                android:layout_marginEnd="18dp"
+                android:layout_marginBottom="14dp"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:maxLines="2"
+                android:shadowColor="#99000000"
+                android:shadowDx="2"
+                android:shadowDy="2"
+                android:shadowRadius="8"
+                android:textColor="#FFFFFF"
+                android:textSize="36sp"
+                android:textStyle="bold"
+                app:layout_constraintBottom_toTopOf="@id/barrier1"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                tools:text="Title" />
+
+            <androidx.constraintlayout.widget.Barrier
+                android:id="@+id/barrier1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:barrierDirection="top"
+                app:constraint_referenced_ids="tv_swiper_rating,tv_swiper_quality,tv_swiper_released,tv_swiper_tv_show_last_episode" />
+
+            <TextView
+                android:id="@+id/tv_swiper_tv_show_last_episode"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_marginBottom="16dp"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                app:layout_constraintBottom_toTopOf="@id/tv_swiper_overview"
+                app:layout_constraintEnd_toStartOf="@id/tv_swiper_quality"
+                app:layout_constraintHorizontal_chainStyle="packed"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/barrier1"
+                tools:text="S1 E1" />
+
+            <TextView
+                android:id="@+id/tv_swiper_quality"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginBottom="16dp"
+                android:background="@drawable/bg_meta_chip"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="3dp"
+                android:textAllCaps="true"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                app:layout_constraintBottom_toTopOf="@id/tv_swiper_overview"
+                app:layout_constraintEnd_toStartOf="@id/tv_swiper_released"
+                app:layout_constraintStart_toEndOf="@id/tv_swiper_tv_show_last_episode"
+                app:layout_constraintTop_toBottomOf="@id/barrier1"
+                tools:text="HD" />
+
+            <TextView
+                android:id="@+id/tv_swiper_released"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginBottom="16dp"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                app:layout_constraintBottom_toTopOf="@id/tv_swiper_overview"
+                app:layout_constraintEnd_toStartOf="@id/iv_swiper_rating_icon"
+                app:layout_constraintStart_toEndOf="@id/tv_swiper_quality"
+                app:layout_constraintTop_toBottomOf="@id/barrier1"
+                tools:text="yyyy" />
+
+            <ImageView
+                android:id="@+id/iv_swiper_rating_icon"
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:layout_marginStart="16dp"
+                android:src="@drawable/ic_star"
+                app:layout_constraintBottom_toBottomOf="@id/tv_swiper_rating"
+                app:layout_constraintEnd_toStartOf="@id/tv_swiper_rating"
+                app:layout_constraintStart_toEndOf="@id/tv_swiper_released"
+                app:layout_constraintTop_toTopOf="@id/tv_swiper_rating"
+                app:tint="#E50914"
+                tools:ignore="ContentDescription" />
+
+            <TextView
+                android:id="@+id/tv_swiper_rating"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="10dp"
+                android:layout_marginBottom="16dp"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                app:layout_constraintBottom_toTopOf="@id/tv_swiper_overview"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toEndOf="@id/iv_swiper_rating_icon"
+                app:layout_constraintTop_toBottomOf="@id/barrier1"
+                tools:text="#.#" />
+
+            <TextView
+                android:id="@+id/tv_swiper_overview"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="18dp"
+                android:layout_marginEnd="18dp"
+                android:layout_marginBottom="20dp"
+                android:ellipsize="end"
+                android:maxLines="3"
+                android:textColor="#E6FFFFFF"
+                android:textSize="14sp"
+                app:layout_constraintBottom_toTopOf="@id/btn_swiper_watch_now"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                tools:text="Descrizione del contenuto in evidenza con una breve sinossi." />
+
+            <TextView
+                android:id="@+id/btn_swiper_watch_now"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="18dp"
+                android:layout_marginEnd="18dp"
+                android:layout_marginBottom="54dp"
+                android:background="@drawable/bg_button_primary_netflix"
+                android:paddingStart="30dp"
+                android:paddingTop="10dp"
+                android:paddingEnd="30dp"
+                android:paddingBottom="10dp"
+                android:text="@string/home_swiper_watch_now"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent" />
+
+            <ProgressBar
+                android:id="@+id/pb_swiper_progress"
+                style="@android:style/Widget.ProgressBar.Horizontal"
+                android:layout_width="0dp"
+                android:layout_height="4dp"
+                android:layout_marginStart="16dp"
+                android:layout_marginTop="10dp"
+                android:layout_marginEnd="16dp"
+                android:backgroundTint="#CC646464"
+                android:progressTint="#E50914"
+                android:visibility="gone"
+                app:layout_constraintEnd_toEndOf="@id/btn_swiper_watch_now"
+                app:layout_constraintStart_toStartOf="@id/btn_swiper_watch_now"
+                app:layout_constraintTop_toBottomOf="@id/btn_swiper_watch_now"
+                tools:progress="80" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </androidx.cardview.widget.CardView>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

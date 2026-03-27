@@ -42,9 +42,11 @@ import com.streamflixreborn.streamflix.databinding.ItemEpisodeContinueWatchingTv
 import com.streamflixreborn.streamflix.databinding.ItemEpisodeMobileBinding
 import com.streamflixreborn.streamflix.databinding.ItemEpisodeTvBinding
 import com.streamflixreborn.streamflix.databinding.ItemGenreGridMobileBinding
+import com.streamflixreborn.streamflix.databinding.ItemGenreMobileBinding
 import com.streamflixreborn.streamflix.databinding.ItemGenreGridTvBinding
 import com.streamflixreborn.streamflix.databinding.ItemLoadingBinding
 import com.streamflixreborn.streamflix.databinding.ItemMovieGridMobileBinding
+import com.streamflixreborn.streamflix.databinding.ItemMovieGenreMobileBinding
 import com.streamflixreborn.streamflix.databinding.ItemMovieGridTvBinding
 import com.streamflixreborn.streamflix.databinding.ItemMovieMobileBinding
 import com.streamflixreborn.streamflix.databinding.ItemMovieTvBinding
@@ -56,6 +58,7 @@ import com.streamflixreborn.streamflix.databinding.ItemSeasonMobileBinding
 import com.streamflixreborn.streamflix.databinding.ItemSeasonTvBinding
 import com.streamflixreborn.streamflix.databinding.ItemTvShowGridBinding
 import com.streamflixreborn.streamflix.databinding.ItemTvShowGridMobileBinding
+import com.streamflixreborn.streamflix.databinding.ItemTvShowGenreMobileBinding
 import com.streamflixreborn.streamflix.databinding.ItemTvShowMobileBinding
 import com.streamflixreborn.streamflix.databinding.ItemTvShowTvBinding
 import com.streamflixreborn.streamflix.models.Category
@@ -81,6 +84,7 @@ class AppAdapter(
     var onEpisodeClickListener: ((Episode) -> Unit)? = null
     var onSeasonClickListener: ((Season) -> Unit)? = null
     var onProviderClickListener: ((Provider) -> Unit)? = null
+    var onHeroImageChangeListener: ((String?) -> Unit)? = null
     // ---------------------------------
     interface Item {
         var itemType: Type
@@ -102,6 +106,7 @@ class AppAdapter(
 
         GENRE_GRID_MOBILE_ITEM,
         GENRE_GRID_TV_ITEM,
+        GENRE_MOBILE_ITEM,
 
         HEADER,
 
@@ -112,6 +117,7 @@ class AppAdapter(
         MOVIE_CONTINUE_WATCHING_MOBILE_ITEM,
         MOVIE_CONTINUE_WATCHING_TV_ITEM,
         MOVIE_GRID_MOBILE_ITEM,
+        MOVIE_GENRE_MOBILE_ITEM,
         MOVIE_GRID_TV_ITEM,
         MOVIE_SWIPER_MOBILE_ITEM,
 
@@ -136,6 +142,7 @@ class AppAdapter(
         TV_SHOW_MOBILE_ITEM,
         TV_SHOW_TV_ITEM,
         TV_SHOW_GRID_MOBILE_ITEM,
+        TV_SHOW_GENRE_MOBILE_ITEM,
         TV_SHOW_GRID_TV_ITEM,
         TV_SHOW_SWIPER_MOBILE_ITEM,
 
@@ -237,6 +244,13 @@ class AppAdapter(
                     false,
                 )
             )
+            Type.GENRE_MOBILE_ITEM -> GenreViewHolder(
+                ItemGenreMobileBinding.inflate(
+                    LayoutInflater.from(parent.context),
+                    parent,
+                    false,
+                )
+            )
 
             Type.HEADER -> HeaderViewHolder(
                 header!!.binding(parent)
@@ -268,6 +282,13 @@ class AppAdapter(
             )
             Type.MOVIE_GRID_MOBILE_ITEM -> MovieViewHolder(
                 ItemMovieGridMobileBinding.inflate(
+                    LayoutInflater.from(parent.context),
+                    parent,
+                    false,
+                )
+            )
+            Type.MOVIE_GENRE_MOBILE_ITEM -> MovieViewHolder(
+                ItemMovieGenreMobileBinding.inflate(
                     LayoutInflater.from(parent.context),
                     parent,
                     false,
@@ -411,6 +432,13 @@ class AppAdapter(
                     false
                 )
             )
+            Type.TV_SHOW_GENRE_MOBILE_ITEM -> TvShowViewHolder(
+                ItemTvShowGenreMobileBinding.inflate(
+                    LayoutInflater.from(parent.context),
+                    parent,
+                    false
+                )
+            )
             Type.TV_SHOW_GRID_TV_ITEM -> TvShowViewHolder(
                 ItemTvShowGridBinding.inflate(
                     LayoutInflater.from(parent.context),
@@ -510,6 +538,7 @@ class AppAdapter(
                 items[adjustedPosition] as Category,
                 onMovieClickListener,
                 onTvShowClickListener,
+                onHeroImageChangeListener,
             )
             is EpisodeViewHolder -> holder.bind(
                 items[adjustedPosition] as Episode

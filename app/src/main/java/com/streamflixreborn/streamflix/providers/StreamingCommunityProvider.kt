@@ -18,6 +18,7 @@ import com.streamflixreborn.streamflix.utils.NetworkClient
 import com.streamflixreborn.streamflix.utils.TmdbUtils
 import com.streamflixreborn.streamflix.utils.UserPreferences
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
@@ -36,13 +37,22 @@ import android.os.Looper
 import com.google.gson.reflect.TypeToken
 import java.lang.reflect.Type
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import org.jsoup.Jsoup
+
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class StreamingCommunityProvider(private val _language: String? = null) : Provider {
 
     private val mutex = Mutex()
     private val totalCounts = mutableMapOf<String, Int>()
+
+    private var cachedGenres: List<Genre>? = null
+    private val tmdbArtworkCache = mutableMapOf<String, TmdbUtils.Artwork?>()
+    private val artworkSemaphore = Semaphore(permits = 6)
 
     override val language: String
         get() = _language ?: UserPreferences.currentLanguage ?: "it"
@@ -51,28 +61,20 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
         get() = if (language == "en") "en" else "it"
 
     private val TAG: String
-        get() = "SCProviderDebug[$LANG]"
+        get() = "SCProvider[$LANG]"
 
     private val DEFAULT_DOMAIN: String = "streamingunity.buzz"
     override val baseUrl = DEFAULT_DOMAIN
     private var _domain: String? = null
     private var domain: String
         get() {
-            if (!_domain.isNullOrEmpty())
-                return _domain!!
-
+            if (!_domain.isNullOrEmpty()) return _domain!!
             val storedDomain = UserPreferences.streamingcommunityDomain
-
-            _domain = if (storedDomain.isNullOrEmpty())
-                DEFAULT_DOMAIN
-            else
-                storedDomain
-
+            _domain = if (storedDomain.isNullOrEmpty()) DEFAULT_DOMAIN else storedDomain
             return _domain!!
         }
         set(value) {
             if (value != domain) {
-                Log.d(TAG, "Domain changed via setter from $domain to $value")
                 UserPreferences.clearProviderCache(name)
                 _domain = value
                 UserPreferences.streamingcommunityDomain = value
@@ -105,22 +107,51 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
     } else {
         "https://$domain/apple-touch-icon.png"
     }
-    
+
     private val MAX_SEARCH_RESULTS = 60
 
     private var _service: StreamingCommunityService? = null
     private var _serviceLanguage: String? = null
     private var _serviceDomain: String? = null
 
+    private suspend fun fetchDomainFromTelegraph(): String? = withContext(Dispatchers.IO) {
+        try {
+            val telegraphUrl = "https://telegra.ph/Link-Aggiornato-StreamingCommunity-09-29"
+            val req = okhttp3.Request.Builder().url(telegraphUrl).get().build()
+
+            NetworkClient.default.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val html = resp.body?.string() ?: ""
+                    val doc = Jsoup.parse(html)
+                    val link = doc.select("a[href*=streamingcommunity]").first()?.attr("href")
+
+                    if (link != null) {
+                        val host = link.substringAfter("://").substringBefore("/").replace("www.", "")
+                        if (host.isNotEmpty()) return@withContext host
+                    }
+                }
+            }
+        } catch (e: Exception) {}
+        return@withContext null
+    }
+
     private suspend fun getService(): StreamingCommunityService {
         return mutex.withLock {
             val currentLang = language
+
+            if (_service == null) {
+                val freshDomain = fetchDomainFromTelegraph()
+                if (freshDomain != null) {
+                    _domain = freshDomain
+                    UserPreferences.streamingcommunityDomain = freshDomain
+                }
+            }
+
             val currentDom = domain
             if (_service == null || _serviceLanguage != currentLang || _serviceDomain != currentDom) {
-                Log.d(TAG, "Building service for: https://$currentDom/ with lang $currentLang")
                 val finalBase = resolveFinalBaseUrl("https://$currentDom/")
                 val host = finalBase.substringAfter("https://").substringBefore("/")
-                
+
                 _serviceLanguage = currentLang
                 _serviceDomain = host
                 _domain = host
@@ -135,13 +166,10 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
 
     suspend fun rebuildService(newDomain: String = domain) {
         mutex.withLock {
-            val prefsDomain = UserPreferences.streamingcommunityDomain
-            val desiredDomain = if (!prefsDomain.isNullOrEmpty() && prefsDomain != domain && prefsDomain != newDomain) prefsDomain else newDomain
-            
-            Log.d(TAG, "Forcing service rebuild for: https://$desiredDomain/")
-            val finalBase = resolveFinalBaseUrl("https://$desiredDomain/")
+            val freshDomain = fetchDomainFromTelegraph() ?: newDomain
+            val finalBase = resolveFinalBaseUrl("https://$freshDomain/")
             val host = finalBase.substringAfter("https://").substringBefore("/")
-            
+
             _domain = host
             UserPreferences.streamingcommunityDomain = host
             _serviceLanguage = language
@@ -163,17 +191,14 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
                 .addInterceptor(RefererInterceptor(startBaseUrl))
                 .addInterceptor(UserAgentInterceptor(StreamingCommunityService.USER_AGENT, { language }))
                 .build()
-            
-            val req = okhttp3.Request.Builder()
-                .url(startBaseUrl)
-                .get()
-                .build()
+
+            val req = okhttp3.Request.Builder().url(startBaseUrl).get().build()
+
             client.newCall(req).execute().use { resp ->
                 val finalUri = resp.request.url
                 finalUri.scheme + "://" + finalUri.host + "/"
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error resolving final URL: ${e.message}")
             startBaseUrl
         }
     }
@@ -184,7 +209,7 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
         } catch (e: Exception) {
             val isSsl = e is javax.net.ssl.SSLHandshakeException || e is java.security.cert.CertPathValidatorException
             if (!isSsl) throw e
-            
+
             mutex.withLock {
                 val finalBase = resolveFinalBaseUrl("https://$domain/")
                 val host = finalBase.substringAfter("https://").substringBefore("/")
@@ -212,6 +237,124 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
         return "https://cdn.$domain/images/$filename"
     }
 
+    private suspend fun getTmdbArtwork(
+        show: StreamingCommunityService.Show,
+        allowSearchFallback: Boolean = false
+    ): TmdbUtils.Artwork? {
+        val numericId = show.tmdbId?.toIntOrNull()
+        if (numericId == null && !allowSearchFallback) return null
+
+        val releaseYear = show.lastAirDate?.substringBefore("-")?.toIntOrNull()
+        val normalizedTitle = show.name.trim().lowercase()
+        val key = when {
+            numericId != null -> "${show.type}:id:$numericId:$language"
+            allowSearchFallback -> "${show.type}:search:$normalizedTitle:$releaseYear:$language"
+            else -> "${show.type}:noid:$normalizedTitle:$releaseYear:$language"
+        }
+
+        synchronized(tmdbArtworkCache) {
+            tmdbArtworkCache[key]?.let { return it }
+        }
+
+        val artwork = when (show.type) {
+            "movie" -> {
+                if (numericId != null) {
+                    TmdbUtils.getMovieArtworkById(numericId, language = language)
+                } else if (allowSearchFallback) {
+                    val tmdbMovie = TmdbUtils.getMovie(show.name, year = releaseYear, language = language)
+                    val enriched = tmdbMovie?.id?.toIntOrNull()?.let { TmdbUtils.getMovieArtworkById(it, language = language) }
+                    enriched ?: tmdbMovie?.let { movie ->
+                        TmdbUtils.Artwork(
+                            poster = movie.poster,
+                            banner = movie.banner,
+                            heroPoster = movie.banner,
+                            hasTextlessHero = false
+                        )
+                    }
+                } else {
+                    null
+                }
+            }
+
+            else -> {
+                if (numericId != null) {
+                    TmdbUtils.getTvShowArtworkById(numericId, language = language)
+                } else if (allowSearchFallback) {
+                    val tmdbTv = TmdbUtils.getTvShow(show.name, year = releaseYear, language = language)
+                    val enriched = tmdbTv?.id?.toIntOrNull()?.let { TmdbUtils.getTvShowArtworkById(it, language = language) }
+                    enriched ?: tmdbTv?.let { tvShow ->
+                        TmdbUtils.Artwork(
+                            poster = tvShow.poster,
+                            banner = tvShow.banner,
+                            heroPoster = tvShow.banner,
+                            hasTextlessHero = false
+                        )
+                    }
+                } else {
+                    null
+                }
+            }
+        }
+
+        synchronized(tmdbArtworkCache) {
+            if (artwork != null) {
+                tmdbArtworkCache[key] = artwork
+            }
+        }
+        return artwork
+    }
+
+    private suspend fun mapShowsFast(
+        shows: List<StreamingCommunityService.Show>,
+        heroOnlyTextless: Boolean = false,
+        allowSearchFallback: Boolean = false,
+        searchFallbackLimit: Int = Int.MAX_VALUE,
+    ): List<com.streamflixreborn.streamflix.models.Show> = coroutineScope {
+        shows.mapIndexed { index, title ->
+            async {
+                artworkSemaphore.withPermit {
+                    val providerBanner = getImageLink(
+                        title.images.findLast { img -> img.type == "background" || img.type == "backdrop" }?.filename
+                            ?: title.images.findLast { img -> img.type == "cover" }?.filename
+                            ?: title.images.find { img -> img.type == "cover" }?.filename
+                    )
+                    val providerPoster = getImageLink(
+                        title.images.findLast { img -> img.type == "poster" }?.filename
+                            ?: title.images.find { img -> img.type == "poster" }?.filename
+                    )
+
+                val shouldAllowSearchFallback = allowSearchFallback && index < searchFallbackLimit
+                val tmdbArtwork = getTmdbArtwork(title, allowSearchFallback = shouldAllowSearchFallback)
+                if (heroOnlyTextless && (tmdbArtwork?.hasTextlessHero != true)) {
+                    return@async null
+                }
+                val finalPoster = tmdbArtwork?.poster ?: providerPoster
+                val finalBanner = tmdbArtwork?.heroPoster ?: tmdbArtwork?.banner ?: providerBanner ?: finalPoster
+
+                    if (title.type == "movie") {
+                        Movie(
+                            id = title.id + "-" + title.slug,
+                            title = title.name,
+                            released = title.lastAirDate,
+                            rating = title.score,
+                            poster = finalPoster,
+                            banner = finalBanner
+                        )
+                    } else {
+                        TvShow(
+                            id = title.id + "-" + title.slug,
+                            title = title.name,
+                            released = title.lastAirDate,
+                            rating = title.score,
+                            poster = finalPoster,
+                            banner = finalBanner
+                        )
+                    }
+                }
+            }
+        }.awaitAll().filterNotNull()
+    }
+
     override suspend fun getHome(): List<Category> {
         val res: StreamingCommunityService.HomeRes = try {
             if (version.isEmpty()) {
@@ -236,43 +379,21 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
         val sliders = res.props.sliders ?: listOf()
         val categories = mutableListOf<Category>()
 
-        // Helper per il mapping
-        fun mapTitles(titles: List<StreamingCommunityService.Show>) = titles.map {
-            if (it.type == "movie") Movie(id = it.id + "-" + it.slug, title = it.name, released = it.lastAirDate, rating = it.score, poster = getImageLink(it.images.find { img -> img.type == "poster" }?.filename), banner = getImageLink(it.images.find { img -> img.type == "background" }?.filename))
-            else TvShow(id = it.id + "-" + it.slug, title = it.name, released = it.lastAirDate, rating = it.score, poster = getImageLink(it.images.find { img -> img.type == "poster" }?.filename), banner = getImageLink(it.images.find { img -> img.type == "background" }?.filename))
-        }
-
-        // 1. Identifichiamo il carosello in evidenza (Hero)
         val heroSlider = sliders.find { it.name == "hero" } ?: sliders.firstOrNull()
         if (heroSlider != null) {
-            categories.add(Category(name = Category.FEATURED, list = mapTitles(heroSlider.titles).take(10)))
+            val textlessHeroShows = mapShowsFast(
+                heroSlider.titles,
+                heroOnlyTextless = true,
+                allowSearchFallback = true
+            ).take(10)
+            if (textlessHeroShows.isNotEmpty()) {
+                categories.add(Category(name = Category.FEATURED, list = textlessHeroShows))
+            }
         }
 
-        // 2. Mappiamo gli slider conosciuti con nomi italiani standard
         val processedSliderNames = mutableSetOf<String>()
         if (heroSlider != null) processedSliderNames.add(heroSlider.name)
 
-        sliders.forEach { slider ->
-            val titles = slider.titles
-            if (titles.isEmpty()) return@forEach
-            
-            val italianName = when {
-                slider.name.contains("trending", true) -> "I titoli del momento"
-                slider.name.contains("latest-movies", true) -> "Film aggiunti di recente"
-                slider.name.contains("latest-tv-shows", true) -> "Serie TV aggiunte di recente"
-                slider.name.contains("top-10", true) -> "Top 10 titoli di oggi"
-                slider.name.contains("upcoming", true) -> "In arrivo"
-                slider.name.contains("new-releases", true) -> "Nuove uscite"
-                else -> null
-            }
-
-            if (italianName != null) {
-                categories.add(Category(italianName, mapTitles(titles)))
-                processedSliderNames.add(slider.name)
-            }
-        }
-
-        // 3. Aggiungiamo i fallback da props (se non già aggiunti dagli slider)
         val propsMapping = listOf(
             "I titoli del momento" to (res.props.trendingTitles ?: res.props.trending),
             "Film aggiunti di recente" to res.props.latestMovies,
@@ -282,36 +403,51 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
         )
         propsMapping.forEach { (name, list) ->
             if (list != null && list.isNotEmpty()) {
-                categories.add(Category(name, mapTitles(list)))
+                categories.add(
+                    Category(
+                        name,
+                        mapShowsFast(
+                            list,
+                            allowSearchFallback = true,
+                            searchFallbackLimit = 40
+                        )
+                    )
+                )
             }
         }
 
-        // 4. Aggiungiamo tutti gli altri slider non ancora processati
         sliders.forEach { slider ->
             if (!processedSliderNames.contains(slider.name) && slider.titles.isNotEmpty()) {
-                categories.add(Category(slider.label ?: slider.name, mapTitles(slider.titles)))
+                val italianName = when {
+                    slider.name.contains("trending", true) -> "I titoli del momento"
+                    slider.name.contains("latest-movies", true) -> "Film aggiunti di recente"
+                    slider.name.contains("latest-tv-shows", true) -> "Serie TV aggiunte di recente"
+                    slider.name.contains("top-10", true) -> "Top 10 titoli di oggi"
+                    slider.name.contains("upcoming", true) -> "In arrivo"
+                    slider.name.contains("new-releases", true) -> "Nuove uscite"
+                    else -> slider.label ?: slider.name
+                }
+                if (categories.none { it.name.equals(italianName, ignoreCase = true) }) {
+                    categories.add(
+                        Category(
+                            italianName,
+                            mapShowsFast(
+                                slider.titles,
+                                allowSearchFallback = true,
+                                searchFallbackLimit = 40
+                            )
+                        )
+                    )
+                }
             }
         }
 
-        // 5. Aggiungiamo le sezioni ArchivePage
-        val archiveSections = listOf(
-            "Film" to res.props.movies,
-            "Serie TV" to res.props.tvShows,
-            "Titoli" to res.props.titles,
-            "TV" to res.props.tv,
-            "Archivio" to res.props.archive
-        )
-        archiveSections.forEach { (name, page) ->
-            page?.data?.let { if (it.isNotEmpty()) categories.add(Category(name, mapTitles(it))) }
-        }
-
-        return categories
-            .filter { it.list.isNotEmpty() }
-            .distinctBy { it.name.lowercase().trim() }
+        return categories.filter { it.list.isNotEmpty() }.distinctBy { it.name.lowercase().trim() }
     }
 
     override suspend fun search(query: String, page: Int): List<AppAdapter.Item> {
         if (query.isEmpty()) {
+            if (cachedGenres != null) return cachedGenres!!
             val res = try {
                 withSslFallback { it.getHome(version = version) }
             } catch (e: Exception) {
@@ -319,31 +455,33 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
                 Gson().fromJson(json.toString(), StreamingCommunityService.HomeRes::class.java)
             }
             if (version != res.version) version = res.version
-            return res.props.genres.map { Genre(id = it.id, name = it.name) }.sortedBy { it.name }
+
+            // Creiamo la lista dei generi e rinominiamo i cubi magici per evitare incomprensioni
+            val dynamicGenres = res.props.genres.map { Genre(id = it.id, name = it.name) }.sortedBy { it.name }.toMutableList()
+            dynamicGenres.add(0, Genre(id = "Tutti i Film", name = "🍿 Tutti i Film"))
+            dynamicGenres.add(1, Genre(id = "Tutte le Serie TV", name = "📺 Tutte le Serie TV"))
+
+            cachedGenres = dynamicGenres
+            return cachedGenres!!
         }
         val res = withSslFallback { it.search(query, (page - 1) * MAX_SEARCH_RESULTS, LANG) }
         if (res.currentPage == null || res.lastPage == null || res.currentPage > res.lastPage) return listOf()
-        return res.data.map {
-            val poster = getImageLink(it.images.find { img -> img.type == "poster" }?.filename)
-            if (it.type == "movie") Movie(id = it.id + "-" + it.slug, title = it.name, released = it.lastAirDate, rating = it.score, poster = poster)
-            else TvShow(id = it.id + "-" + it.slug, title = it.name, released = it.lastAirDate, rating = it.score, poster = poster)
-        }
+        return mapShowsFast(
+            res.data.distinctBy { it.id },
+            allowSearchFallback = true,
+            searchFallbackLimit = 30
+        )
     }
 
     private fun getTitlesFromInertiaJson(json: JSONObject): List<StreamingCommunityService.Show> {
         val gson = Gson()
         val showListType: Type = object : TypeToken<List<StreamingCommunityService.Show>>() {}.type
         val props = json.optJSONObject("props") ?: return listOf()
-
         if (props.has("titles") && props.optJSONArray("titles") != null) {
             val jsonArray = props.optJSONArray("titles")
             return gson.fromJson<List<StreamingCommunityService.Show>>(jsonArray?.toString() ?: "[]", showListType) ?: listOf()
         }
-
-        val res: StreamingCommunityService.ArchiveRes? = try {
-            gson.fromJson(json.toString(), StreamingCommunityService.ArchiveRes::class.java)
-        } catch (e: Exception) { null }
-
+        val res: StreamingCommunityService.ArchiveRes? = try { gson.fromJson(json.toString(), StreamingCommunityService.ArchiveRes::class.java) } catch (e: Exception) { null }
         res?.version?.let { version = it }
         return res?.props?.let { p -> p.archive?.data ?: p.titles?.data ?: p.movies?.data ?: p.tv?.data ?: p.tvShows?.data } ?: listOf()
     }
@@ -352,147 +490,151 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
         val offset = (page - 1) * 60
         val shows = try {
             if (page == 1) {
-                val json = InertiaUtils.parseInertiaData(withSslFallback { it.getMoviesHtml() })
-                getTitlesFromInertiaJson(json)
+                getTitlesFromInertiaJson(InertiaUtils.parseInertiaData(withSslFallback { it.getMoviesHtml() }))
             } else {
                 withSslFallback { it.getArchiveApi(lang = language, offset = offset, type = "movie") }.titles
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error fetching movies page $page: ${e.message}")
-            listOf()
-        }
-
-        return shows.map { title ->
-            Movie(id = title.id + "-" + title.slug, title = title.name, released = title.lastAirDate, rating = title.score, poster = getImageLink(title.images.find { img -> img.type == "poster" }?.filename))
-        }.distinctBy { it.id }
+        } catch (e: Exception) { listOf() }
+        return mapShowsFast(
+            shows.distinctBy { it.id },
+            allowSearchFallback = true,
+            searchFallbackLimit = 45
+        ).filterIsInstance<Movie>()
     }
 
     override suspend fun getTvShows(page: Int): List<TvShow> {
         val offset = (page - 1) * 60
         val shows = try {
             if (page == 1) {
-                val json = InertiaUtils.parseInertiaData(withSslFallback { it.getTvShowsHtml() })
-                getTitlesFromInertiaJson(json)
+                getTitlesFromInertiaJson(InertiaUtils.parseInertiaData(withSslFallback { it.getTvShowsHtml() }))
             } else {
                 withSslFallback { it.getArchiveApi(lang = language, offset = offset, type = "tv") }.titles
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error fetching tv shows page $page: ${e.message}")
-            listOf()
-        }
-
-        return shows.map { title ->
-            TvShow(id = title.id + "-" + title.slug, title = title.name, released = title.lastAirDate, rating = title.score, poster = getImageLink(title.images.find { img -> img.type == "poster" }?.filename))
-        }.distinctBy { it.id }
+        } catch (e: Exception) { listOf() }
+        return mapShowsFast(
+            shows.distinctBy { it.id },
+            allowSearchFallback = true,
+            searchFallbackLimit = 45
+        ).filterIsInstance<TvShow>()
     }
 
     override suspend fun getMovie(id: String): Movie = coroutineScope {
         val resDeferred = async {
             try {
-                withSslFallback { it.getDetails(id, version = version, language = LANG) }.also {
-                    if (version != it.version) version = it.version
-                }
+                withSslFallback { it.getDetails(id, version = version, language = LANG) }.also { if (version != it.version) version = it.version }
             } catch (e: Exception) {
-                // Se riceviamo 401 o altro errore Inertia, ripieghiamo sull'HTML puro (Shadow Bypass)
-                Log.w(TAG, "Inertia getDetails failed ($e), falling back to HTML parsing")
                 val doc = StreamingCommunityService.fetchDocumentWithRedirectsAndSslFallback("https://$domain/$LANG/titles/$id", "https://$domain/", language)
-                val json = InertiaUtils.parseInertiaData(doc)
-                Gson().fromJson(json.toString(), StreamingCommunityService.HomeRes::class.java).also {
-                    if (version != it.version) version = it.version
-                }
+                Gson().fromJson(InertiaUtils.parseInertiaData(doc).toString(), StreamingCommunityService.HomeRes::class.java).also { if (version != it.version) version = it.version }
             }
         }
 
         val res = resDeferred.await()
         val title = res.props.title
-        val tmdbMovieDeferred = async { title.tmdbId?.let { TmdbUtils.getMovieById(it, language = language) } }
-        val tmdbMovie = tmdbMovieDeferred.await()
+        val tmdbMovie = title.tmdbId?.toIntOrNull()?.let { TmdbUtils.getMovieById(it, language = language) }
 
         return@coroutineScope Movie(
-            id = id, title = tmdbMovie?.title ?: title.name, overview = tmdbMovie?.overview ?: title.plot, released = title.lastAirDate, rating = title.score, quality = title.quality, runtime = title.runtime, 
-            poster = getImageLink(title.images.find { img -> img.type == "poster" }?.filename), banner = getImageLink(title.images.find { img -> img.type == "background" }?.filename), 
-            genres = title.genres?.map { Genre(id = it.id, name = it.name) } ?: listOf(), 
+            id = id, title = tmdbMovie?.title ?: title.name, overview = tmdbMovie?.overview ?: title.plot, released = title.lastAirDate, rating = title.score, quality = title.quality, runtime = title.runtime,
+            poster = tmdbMovie?.poster ?: getImageLink(title.images.findLast { it.type == "poster" }?.filename),
+            banner = tmdbMovie?.banner
+                ?: tmdbMovie?.poster
+                ?: getImageLink(title.images.findLast { it.type == "background" || it.type == "backdrop" }?.filename ?: title.images.findLast { it.type == "cover" }?.filename),
+            genres = title.genres?.map { Genre(id = it.id, name = it.name) } ?: listOf(),
             cast = title.actors?.map { actor ->
                 val tmdbPerson = tmdbMovie?.cast?.find { p -> p.name.equals(actor.name, ignoreCase = true) }
                 People(id = actor.name, name = actor.name, image = tmdbPerson?.image)
-            } ?: listOf(), 
-            trailer = title.trailers?.find { t -> t.youtubeId != "" }?.youtubeId?.let { yid -> "https://youtube.com/watch?v=$yid" }, 
-            recommendations = res.props.sliders?.find { it.titles.isNotEmpty() }?.titles?.map { 
-                if (it.type == "movie") Movie(id = it.id + "-" + it.slug, title = it.name, rating = it.score, poster = getImageLink(it.images.find { img -> img.type == "poster" }?.filename))
-                else TvShow(id = it.id + "-" + it.slug, title = it.name, rating = it.score, poster = getImageLink(it.images.find { img -> img.type == "poster" }?.filename))
-            } ?: listOf()
+            } ?: listOf(),
+            trailer = title.trailers?.find { t -> t.youtubeId != "" }?.youtubeId?.let { yid -> "https://youtube.com/watch?v=$yid" },
+            recommendations = mapShowsFast(
+                res.props.sliders?.find { it.titles.isNotEmpty() }?.titles ?: listOf(),
+                allowSearchFallback = true,
+                searchFallbackLimit = 20
+            )
         )
     }
 
     override suspend fun getTvShow(id: String): TvShow = coroutineScope {
         val resDeferred = async {
-             try {
-                withSslFallback { it.getDetails(id, version = version, language = LANG) }.also {
-                    if (version != it.version) version = it.version
-                }
+            try {
+                withSslFallback { it.getDetails(id, version = version, language = LANG) }.also { if (version != it.version) version = it.version }
             } catch (e: Exception) {
-                Log.w(TAG, "Inertia getDetails failed ($e), falling back to HTML parsing")
                 val doc = StreamingCommunityService.fetchDocumentWithRedirectsAndSslFallback("https://$domain/$LANG/titles/$id", "https://$domain/", language)
-                val json = InertiaUtils.parseInertiaData(doc)
-                Gson().fromJson(json.toString(), StreamingCommunityService.HomeRes::class.java).also {
-                    if (version != it.version) version = it.version
-                }
+                Gson().fromJson(InertiaUtils.parseInertiaData(doc).toString(), StreamingCommunityService.HomeRes::class.java).also { if (version != it.version) version = it.version }
             }
         }
 
         val res = resDeferred.await()
         val title = res.props.title
-        val tmdbShowDeferred = async { title.tmdbId?.let { TmdbUtils.getTvShowById(it, language = language) } }
-        val tmdbShow = tmdbShowDeferred.await()
+        val tmdbShow = title.tmdbId?.toIntOrNull()?.let { TmdbUtils.getTvShowById(it, language = language) }
 
-        return@coroutineScope TvShow(id = id, title = tmdbShow?.title ?: title.name, overview = tmdbShow?.overview ?: title.plot, released = title.lastAirDate, rating = title.score, quality = title.quality, 
-            poster = getImageLink(title.images.find { img -> img.type == "poster" }?.filename), banner = getImageLink(title.images.find { img -> img.type == "background" }?.filename), 
-            genres = title.genres?.map { Genre(id = it.id, name = it.name) } ?: listOf(), 
+        return@coroutineScope TvShow(id = id, title = tmdbShow?.title ?: title.name, overview = tmdbShow?.overview ?: title.plot, released = title.lastAirDate, rating = title.score, quality = title.quality,
+            poster = tmdbShow?.poster ?: getImageLink(title.images.findLast { it.type == "poster" }?.filename),
+            banner = tmdbShow?.banner
+                ?: tmdbShow?.poster
+                ?: getImageLink(title.images.findLast { it.type == "background" || it.type == "backdrop" }?.filename ?: title.images.findLast { it.type == "cover" }?.filename),
+            genres = title.genres?.map { Genre(id = it.id, name = it.name) } ?: listOf(),
             cast = title.actors?.map { actor ->
                 val tmdbPerson = tmdbShow?.cast?.find { p -> p.name.equals(actor.name, ignoreCase = true) }
                 People(id = actor.name, name = actor.name, image = tmdbPerson?.image)
-            } ?: listOf(), 
-            trailer = title.trailers?.find { t -> t.youtubeId != "" }?.youtubeId?.let { yid -> "https://youtube.com/watch?v=$yid" }, 
-            recommendations = res.props.sliders?.find { it.titles.isNotEmpty() }?.titles?.map {
-                if (it.type == "movie") Movie(id = it.id + "-" + it.slug, title = it.name, rating = it.score, poster = getImageLink(it.images.find { img -> img.type == "poster" }?.filename))
-                else TvShow(id = it.id + "-" + it.slug, title = it.name, rating = it.score, poster = getImageLink(it.images.find { img -> img.type == "poster" }?.filename))
-            } ?: listOf(), 
+            } ?: listOf(),
+            trailer = title.trailers?.find { t -> t.youtubeId != "" }?.youtubeId?.let { yid -> "https://youtube.com/watch?v=$yid" },
+            recommendations = mapShowsFast(
+                res.props.sliders?.find { it.titles.isNotEmpty() }?.titles ?: listOf(),
+                allowSearchFallback = true,
+                searchFallbackLimit = 20
+            ),
             seasons = title.seasons?.map { s ->
                 val seasonNumber = s.number.toIntOrNull() ?: (title.seasons.indexOf(s) + 1)
                 Season(id = "$id/season-${s.number}", number = seasonNumber, title = s.name, poster = tmdbShow?.seasons?.find { ts -> ts.number == seasonNumber }?.poster)
-        } ?: listOf())
+            } ?: listOf())
     }
 
     override suspend fun getEpisodesBySeason(seasonId: String): List<Episode> {
         val res: StreamingCommunityService.SeasonRes = try {
-            withSslFallback { it.getSeasonDetails(seasonId, version = version, language = LANG) }.also {
-                if (version != it.version) version = it.version
-            }
+            withSslFallback { it.getSeasonDetails(seasonId, version = version, language = LANG) }
         } catch (e: Exception) {
-            Log.w(TAG, "Inertia getSeasonDetails failed ($e), falling back to HTML parsing")
             val doc = StreamingCommunityService.fetchDocumentWithRedirectsAndSslFallback("https://$domain/$LANG/titles/$seasonId", "https://$domain/", language)
-            val json = InertiaUtils.parseInertiaData(doc)
-            Gson().fromJson(json.toString(), StreamingCommunityService.SeasonRes::class.java).also {
-                if (version != it.version) version = it.version
-            }
+            Gson().fromJson(InertiaUtils.parseInertiaData(doc).toString(), StreamingCommunityService.SeasonRes::class.java)
         }
         return res.props.loadedSeason.episodes.map {
-            Episode(id = "${seasonId.substringBefore("-")}?episode_id=${it.id}", number = it.number.toIntOrNull() ?: (res.props.loadedSeason.episodes.indexOf(it) + 1), title = it.name, poster = getImageLink(it.images.find { img -> img.type == "cover" }?.filename), overview = it.plot)
+            Episode(id = "${seasonId.substringBefore("-")}?episode_id=${it.id}", number = it.number.toIntOrNull() ?: (res.props.loadedSeason.episodes.indexOf(it) + 1), title = it.name, poster = getImageLink(it.images.findLast { img -> img.type == "cover" }?.filename), overview = it.plot)
         }
     }
 
+    // NIENTE PIÙ ORDINAMENTO ALFABETICO FAKE: I risultati arrivano puliti dal server e sono ordinati per ultimi usciti
     override suspend fun getGenre(id: String, page: Int): Genre {
-        val name = ""
         val offset = (page - 1) * 60
-        
-        // Skip if we already know there's no more data
-        totalCounts[id]?.let { total ->
-            if (offset >= total) return Genre(id = id, name = name, shows = emptyList())
+        var actualType: String? = null
+        var actualGenreId: String? = null
+        var displayName = id
+
+        when {
+            id == "Tutti i Film" -> { actualType = "movie" }
+            id == "Tutte le Serie TV" -> { actualType = "tv" }
+            id.startsWith("Film: ") -> {
+                actualType = "movie"
+                val genreName = id.removePrefix("Film: ")
+                displayName = genreName
+                val genres = search("", 1).filterIsInstance<Genre>()
+                actualGenreId = genres.find { it.name.equals(genreName, ignoreCase = true) }?.id
+            }
+            id.startsWith("Serie TV: ") -> {
+                actualType = "tv"
+                val genreName = id.removePrefix("Serie TV: ")
+                displayName = genreName
+                val genres = search("", 1).filterIsInstance<Genre>()
+                actualGenreId = genres.find { it.name.equals(genreName, ignoreCase = true) }?.id
+            }
+            else -> {
+                val genres = search("", 1).filterIsInstance<Genre>()
+                actualGenreId = genres.find { it.name.equals(id, ignoreCase = true) }?.id ?: id
+            }
         }
+
+        totalCounts[id]?.let { total -> if (offset >= total) return Genre(id = id, name = displayName, shows = emptyList()) }
 
         val shows = try {
             if (page == 1) {
-                val json = InertiaUtils.parseInertiaData(withSslFallback { it.getArchiveHtml(genreId = id) })
+                val json = InertiaUtils.parseInertiaData(withSslFallback { it.getArchiveHtml(genreId = actualGenreId, type = actualType) })
                 val props = json.optJSONObject("props")
                 if (props != null) {
                     val total = props.optInt("totalCount", 0)
@@ -500,57 +642,49 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
                 }
                 getTitlesFromInertiaJson(json)
             } else {
-                withSslFallback { it.getArchiveApi(lang = language, offset = offset, genreId = id) }.titles
+                withSslFallback { it.getArchiveApi(lang = language, offset = offset, genreId = actualGenreId, type = actualType) }.titles
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error fetching genre $id page $page: ${e.message}")
-            listOf()
-        }
+        } catch (e: Exception) { listOf() }
 
-        return Genre(id = id, name = name, shows = shows.map { title ->
-            val poster = getImageLink(title.images.find { img -> img.type == "poster" }?.filename)
-            if (title.type == "movie") Movie(id = title.id + "-" + title.slug, title = title.name, released = title.lastAirDate, rating = title.score, poster = poster)
-            else TvShow(id = title.id + "-" + title.slug, title = title.name, released = title.lastAirDate, rating = title.score, poster = poster)
-        })
+        return Genre(
+            id = id,
+            name = displayName,
+            shows = mapShowsFast(
+                shows.distinctBy { it.id },
+                allowSearchFallback = true,
+                searchFallbackLimit = 35
+            )
+        )
     }
 
     override suspend fun getPeople(id: String, page: Int): People {
         val res = withSslFallback { it.search(id, (page - 1) * MAX_SEARCH_RESULTS, LANG) }
         if (res.currentPage == null || res.lastPage == null || res.currentPage > res.lastPage) return People(id = id, name = id)
-        return People(id = id, name = id, filmography = res.data.map {
-            val poster = getImageLink(it.images.find { img -> img.type == "poster" }?.filename)
-            if (it.type == "movie") Movie(id = it.id + "-" + it.slug, title = it.name, released = it.lastAirDate, rating = it.score, poster = poster)
-            else TvShow(id = it.id + "-" + it.slug, title = it.name, released = it.lastAirDate, rating = it.score, poster = poster)
-        })
+        return People(
+            id = id,
+            name = id,
+            filmography = mapShowsFast(
+                res.data.distinctBy { it.id },
+                allowSearchFallback = true,
+                searchFallbackLimit = 30
+            )
+        )
     }
 
     override suspend fun getServers(id: String, videoType: Video.Type): List<Video.Server> {
-        Log.i("StreamFlixES", "[PROV] -> StreamingCommunity: getServers for $id")
         val base = "https://$domain/"
-        
         val iframeUrl = when (videoType) {
             is Video.Type.Movie -> base + "$LANG/iframe/" + id.substringBefore("-") + "?language=$LANG"
             is Video.Type.Episode -> base + "$LANG/iframe/" + id.substringBefore("?") + "?episode_id=" + id.substringAfter("=") + "&next_episode=1" + "&language=$LANG"
         }
-        
-        Log.d(TAG, "Fetching iframe from: $iframeUrl")
         val document = StreamingCommunityService.fetchDocumentWithRedirectsAndSslFallback(iframeUrl, base, language)
         val src = document.selectFirst("iframe")?.attr("src") ?: ""
-
-        if (src.isEmpty()) {
-            Log.e(TAG, "No iframe found in /iframe/ endpoint")
-            return listOf()
-        }
-
-        Log.i("StreamFlixES", "[PROV] -> Found Vixcloud src: $src")
+        if (src.isEmpty()) return listOf()
         return listOf(Video.Server(id = id, name = "Vixcloud", src = src))
     }
 
     override suspend fun getVideo(server: Video.Server): Video {
-        Log.i("StreamFlixES", "[SERVER] -> StreamingCommunity: Using ${server.name} (Src: ${server.src})")
-        val video = VixcloudExtractor(language).extract(server.src)
-        Log.i("StreamFlixES", "[VIDEO] -> Source: ${video.source}")
-        return video
+        return VixcloudExtractor(language).extract(server.src)
     }
 
     private class UserAgentInterceptor(private val userAgent: String, private val languageProvider: () -> String) : Interceptor {
@@ -588,12 +722,34 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
         }
     }
 
+    private class RateLimitInterceptor(
+        private val minIntervalMs: Long = 350L,
+    ) : Interceptor {
+        companion object {
+            private val lock = Any()
+            private var lastRequestAt: Long = 0L
+        }
+
+        override fun intercept(chain: Interceptor.Chain): Response {
+            synchronized(lock) {
+                val now = System.currentTimeMillis()
+                val waitMs = minIntervalMs - (now - lastRequestAt)
+                if (waitMs > 0) {
+                    Thread.sleep(waitMs)
+                }
+                lastRequestAt = System.currentTimeMillis()
+            }
+            return chain.proceed(chain.request())
+        }
+    }
+
     private interface StreamingCommunityService {
         companion object {
             const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
             fun build(baseUrl: String, language: String, domainProvider: () -> String, onDomainChanged: (String) -> Unit, lang: String): StreamingCommunityService {
                 val client = NetworkClient.default.newBuilder()
+                    .addInterceptor(RateLimitInterceptor())
                     .addInterceptor(RefererInterceptor(baseUrl))
                     .addInterceptor(UserAgentInterceptor(USER_AGENT, { language }))
                     .addInterceptor(RedirectInterceptor(domainProvider, onDomainChanged))
@@ -610,6 +766,7 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
 
             fun buildUnsafe(baseUrl: String, language: String, lang: String): StreamingCommunityService {
                 val client = NetworkClient.trustAll.newBuilder()
+                    .addInterceptor(RateLimitInterceptor())
                     .addInterceptor(RefererInterceptor(baseUrl))
                     .addInterceptor(UserAgentInterceptor(USER_AGENT, { language }))
                     .build()
@@ -630,7 +787,7 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
                     .addInterceptor(RefererInterceptor(referer))
                     .addInterceptor(UserAgentInterceptor(USER_AGENT, { language }))
                     .build()
-                
+
                 return try {
                     client.newCall(okhttp3.Request.Builder().url(url).header("X-Requested-With", "XMLHttpRequest").get().build()).execute().use { resp ->
                         Jsoup.parse(resp.body?.string() ?: "")
@@ -645,16 +802,16 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
         @GET("archive?type=tv") suspend fun getTvShowsHtml(): Document
         @GET("/api/search") suspend fun search(@Query("q", encoded = true) keyword: String, @Query("offset") offset: Int = 0, @Query("lang") language: String): SearchRes
         @GET("/api/archive") suspend fun getArchiveApi(@Query("lang") lang: String, @Query("offset") offset: Int, @Query("genre[]") genreId: String? = null, @Query("type") type: String? = null): ApiArchiveRes
-        @GET("archive") suspend fun getArchiveHtml(@Query("genre[]") genreId: String): Document
+        @GET("archive") suspend fun getArchiveHtml(@Query("genre[]") genreId: String? = null, @Query("type") type: String? = null): Document
         @GET("titles/{id}") suspend fun getDetails(@Path("id") id: String, @Header("x-inertia") xInertia: String = "true", @Header("x-inertia-version") version: String, @Query("lang") language: String, @Header("X-Requested-With") xRequestedWith: String = "XMLHttpRequest"): HomeRes
         @GET("titles/{id}/") suspend fun getSeasonDetails(@Path("id") id: String, @Header("x-inertia") xInertia: String = "true", @Header("x-inertia-version") version: String, @Query("lang") language: String, @Header("X-Requested-With") xRequestedWith: String = "XMLHttpRequest"): SeasonRes
 
-        data class Image(val filename: String, val type: String)
+        data class Image(val filename: String, val type: String, val locale: String? = null)
         data class Genre(val id: String, val name: String)
         data class Actor(val id: String, val name: String)
         data class Trailer(@SerializedName("youtube_id") val youtubeId: String?)
         data class Season(val number: String, val name: String?)
-        data class Show(val id: String, val name: String, val type: String, @SerializedName("tmdb_id") val tmdbId: Int?, val score: Double, val lastAirDate: String, val images: List<Image>, val slug: String, val plot: String?, val genres: List<Genre>?, @SerializedName("main_actors") val actors: List<Actor>?, val trailers: List<Trailer>?, val seasons: List<Season>?, val quality: String?, val runtime: Int?)
+        data class Show(val id: String, val name: String, val type: String, @SerializedName("tmdb_id") val tmdbId: String?, val score: Double, @SerializedName("last_air_date") val lastAirDate: String?, val images: List<Image>, val slug: String, val plot: String?, val genres: List<Genre>?, @SerializedName("main_actors") val actors: List<Actor>?, val trailers: List<Trailer>?, val seasons: List<Season>?, val quality: String?, val runtime: Int?)
         data class Slider(val label: String?, val name: String, val titles: List<Show>)
         data class Props(
             val genres: List<Genre>,

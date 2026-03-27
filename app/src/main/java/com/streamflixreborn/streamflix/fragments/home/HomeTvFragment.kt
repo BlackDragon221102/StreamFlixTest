@@ -88,6 +88,7 @@ class HomeTvFragment : Fragment() {
                     }
                     is HomeViewModel.State.SuccessLoading -> {
                         displayHome(state.categories)
+                        binding.vgvHome.scheduleLayoutAnimation()
                         binding.vgvHome.visibility = View.VISIBLE
                         binding.isLoading.root.visibility = View.GONE
                     }

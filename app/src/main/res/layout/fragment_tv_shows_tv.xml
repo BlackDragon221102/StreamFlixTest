@@ -12,15 +12,14 @@
         android:layout_height="0dp"
         android:clipChildren="false"
         android:clipToPadding="false"
-        android:padding="@dimen/tv_shows_spacing"
+        android:padding="@dimen/movies_spacing"
         app:focusOutEnd="true"
         app:focusOutFront="true"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:numberOfColumns="6"
-        tools:listitem="@layout/item_tv_show_grid" />
+        tools:listitem="@layout/item_category_tv" />
 
     <include
         android:id="@+id/is_loading"

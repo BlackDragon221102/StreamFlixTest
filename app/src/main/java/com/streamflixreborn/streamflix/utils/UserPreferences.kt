@@ -10,7 +10,7 @@ import com.streamflixreborn.streamflix.R
 import com.streamflixreborn.streamflix.fragments.player.settings.PlayerSettingsView
 import com.streamflixreborn.streamflix.providers.Provider
 import com.streamflixreborn.streamflix.providers.Provider.Companion.providers
-import com.streamflixreborn.streamflix.providers.TmdbProvider
+import com.streamflixreborn.streamflix.providers.StreamingCommunityProvider
 import androidx.core.content.edit
 import com.streamflixreborn.streamflix.database.AppDatabase
 import org.json.JSONObject
@@ -36,6 +36,11 @@ object UserPreferences {
 
     lateinit var providerCache: JSONObject
 
+    private val streamingCommunityProvider: Provider by lazy {
+        providers.keys.find { it is StreamingCommunityProvider && it.language == "it" }
+            ?: StreamingCommunityProvider("it")
+    }
+
     fun setup(context: Context) {
         Log.d(TAG, "setup() called with context: $context")
         val prefsName = "${BuildConfig.APPLICATION_ID}.preferences"
@@ -58,19 +63,15 @@ object UserPreferences {
 
     var currentProvider: Provider?
         get() {
-            val providerName = Key.CURRENT_PROVIDER.getString()
-            if (providerName?.startsWith("TMDb (") == true && providerName.endsWith(")")) {
-                val lang = providerName.substringAfter("TMDb (").substringBefore(")")
-                return TmdbProvider(lang)
-            }
-            return Provider.providers.keys.find { it.name == providerName }
+            return streamingCommunityProvider
         }
         set(value) {
+            val nextProvider = streamingCommunityProvider
             // CRITICO: Resetta l'istanza del database prima di cambiare provider
             // per forzare la creazione di un nuovo database file corretto.
             AppDatabase.resetInstance()
 
-            Key.CURRENT_PROVIDER.setString(value?.name)
+            Key.CURRENT_PROVIDER.setString(nextProvider.name)
             // Notify all ViewModels that the provider has changed
             ProviderChangeNotifier.notifyProviderChanged()
         }

@@ -23,6 +23,18 @@ object TMDb3 {
     private const val URL = "https://api.themoviedb.org/3/"
     private var service = ApiService.build()
 
+    private fun String?.asUsableApiKeyOrNull(): String? {
+        val normalized = this?.trim()
+        return normalized
+            ?.takeIf { it.isNotEmpty() }
+            ?.takeIf { !it.equals("null", ignoreCase = true) }
+    }
+
+    fun hasUsableApiKey(): Boolean {
+        return UserPreferences.tmdbApiKey.asUsableApiKeyOrNull() != null ||
+                BuildConfig.TMDB_API_KEY.asUsableApiKeyOrNull() != null
+    }
+
     fun rebuildService() {
         service = ApiService.build()
     }
@@ -379,10 +391,12 @@ object TMDb3 {
             movieId: Int,
             appendToResponse: List<Params.AppendToResponse.Movie>? = null,
             language: String? = null,
+            includeImageLanguage: String? = null,
         ): Movie.Detail {
             val params = mapOf(
                 Params.Key.APPEND_TO_RESPONSE to appendToResponse?.joinToString(",") { it.value },
                 Params.Key.LANGUAGE to language,
+                Params.Key.INCLUDE_IMAGE_LANGUAGE to includeImageLanguage,
             )
             return service.getMovieDetails(
                 movieId = movieId,
@@ -672,10 +686,12 @@ object TMDb3 {
             seriesId: Int,
             appendToResponse: List<Params.AppendToResponse.Tv>? = null,
             language: String? = null,
+            includeImageLanguage: String? = null,
         ): Tv.Detail {
             val params = mapOf(
                 Params.Key.APPEND_TO_RESPONSE to appendToResponse?.joinToString(",") { it.value },
                 Params.Key.LANGUAGE to language,
+                Params.Key.INCLUDE_IMAGE_LANGUAGE to includeImageLanguage,
             )
             return service.getTvDetails(
                 seriesId = seriesId,
@@ -833,6 +849,7 @@ object TMDb3 {
             const val FIRST_AIR_DATE_LTE = "first_air_date.lte"
             const val FIRST_AIR_DATE_YEAR = "first_air_date_year"
             const val INCLUDE_ADULT = "include_adult"
+            const val INCLUDE_IMAGE_LANGUAGE = "include_image_language"
             const val INCLUDE_NULL_FIRST_AIR_DATES = "include_null_first_air_dates"
             const val INCLUDE_VIDEO = "include_video"
             const val LANGUAGE = "language"
@@ -940,12 +957,55 @@ object TMDb3 {
             else -> this
         }
 
+    private fun normalizeLanguageCode(language: String?): String? {
+        return language
+            ?.substringBefore("-")
+            ?.trim()
+            ?.lowercase()
+            ?.takeIf { it.isNotEmpty() }
+    }
+
+    fun italianIncludeImageLanguage(language: String?): String? {
+        return if (normalizeLanguageCode(language) == "it") {
+            "it,en,null"
+        } else {
+            null
+        }
+    }
+
+    fun pickImagePathWithFallback(
+        defaultPath: String?,
+        images: List<Images.FileImage>?,
+        language: String?,
+    ): String? {
+        if (images.isNullOrEmpty()) return defaultPath
+
+        val normalizedLanguage = normalizeLanguageCode(language)
+        val preferredLanguages = when (normalizedLanguage) {
+            "it" -> listOf("it", "en")
+            else -> listOfNotNull(normalizedLanguage)
+        }
+
+        val preferredPath = preferredLanguages.asSequence()
+            .mapNotNull { preferred ->
+                images.firstOrNull { it.iso639?.lowercase() == preferred }?.filePath
+            }
+            .firstOrNull()
+
+        return preferredPath
+            ?: defaultPath
+            ?: images.firstOrNull { it.iso639 == null }?.filePath
+            ?: images.firstOrNull()?.filePath
+    }
+
 
     private interface ApiService {
 
         companion object {
             fun build(): ApiService {
-                val apiKey = UserPreferences.tmdbApiKey.ifEmpty { BuildConfig.TMDB_API_KEY }
+                val apiKey = UserPreferences.tmdbApiKey.asUsableApiKeyOrNull()
+                    ?: BuildConfig.TMDB_API_KEY.asUsableApiKeyOrNull()
+                    ?: ""
 
                 val client = OkHttpClient.Builder().addInterceptor { chain ->
                     val original = chain.request()

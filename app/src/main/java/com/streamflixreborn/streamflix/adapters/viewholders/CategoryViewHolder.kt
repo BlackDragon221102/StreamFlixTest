@@ -58,14 +58,15 @@ class CategoryViewHolder(
     fun bind(
         category: Category,
         onMovieClick: ((Movie) -> Unit)? = null,
-        onTvShowClick: ((TvShow) -> Unit)? = null
+        onTvShowClick: ((TvShow) -> Unit)? = null,
+        onHeroImageChange: ((String?) -> Unit)? = null,
     ) {
         this.category = category
 
         when (_binding) {
             is ItemCategoryMobileBinding -> displayMobileItem(_binding, onMovieClick, onTvShowClick)
             is ItemCategoryTvBinding -> displayTvItem(_binding, onMovieClick, onTvShowClick)
-            is ContentCategorySwiperMobileBinding -> displayMobileSwiper(_binding, onMovieClick, onTvShowClick)
+            is ContentCategorySwiperMobileBinding -> displayMobileSwiper(_binding, onMovieClick, onTvShowClick, onHeroImageChange)
             is ContentCategorySwiperTvBinding -> displayTvSwiper(_binding)
         }
     }
@@ -115,7 +116,8 @@ class CategoryViewHolder(
     private fun displayMobileSwiper(
         binding: ContentCategorySwiperMobileBinding,
         onMovieClick: ((Movie) -> Unit)?,
-        onTvShowClick: ((TvShow) -> Unit)?
+        onTvShowClick: ((TvShow) -> Unit)?,
+        onHeroImageChange: ((String?) -> Unit)?
     ) {
         binding.tvCategoryTitle.text = category.name
         val handler = Handler(Looper.getMainLooper())
@@ -129,6 +131,16 @@ class CategoryViewHolder(
             listOfNotNull(category.list.firstOrNull()),
         ).flatten()
         binding.vpCategorySwiper.apply {
+            setPageTransformer { page, _ ->
+                val lp = page.layoutParams
+                if (lp != null &&
+                    (lp.width != ViewGroup.LayoutParams.MATCH_PARENT || lp.height != ViewGroup.LayoutParams.MATCH_PARENT)
+                ) {
+                    lp.width = ViewGroup.LayoutParams.MATCH_PARENT
+                    lp.height = ViewGroup.LayoutParams.MATCH_PARENT
+                    page.layoutParams = lp
+                }
+            }
             adapter = AppAdapter().apply {
                 this.onMovieClickListener = onMovieClick
                 this.onTvShowClickListener = onTvShowClick
@@ -137,29 +149,21 @@ class CategoryViewHolder(
             }
         }
 
-        binding.llDotsIndicator.apply {
-            removeAllViews()
-            repeat(category.list.size) {
-                val view = View(context).apply {
-                    layoutParams = LinearLayout.LayoutParams(15, 15).apply {
-                        setMargins(10, 0, 10, 0)
-                    }
-                    setBackgroundResource(R.drawable.bg_dot_indicator)
-                }
-                addView(view)
+        fun emitHeroImageFor(position: Int) {
+            val selected = items.getOrNull(position)
+            val imageUrl = when (selected) {
+                is Movie -> selected.banner ?: selected.poster
+                is TvShow -> selected.banner ?: selected.poster
+                else -> null
             }
+            onHeroImageChange?.invoke(imageUrl)
         }
+
+        emitHeroImageFor(1)
 
         binding.vpCategorySwiper.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
-                val indicatorPosition = when (position) {
-                    0 -> category.list.lastIndex
-                    items.lastIndex -> 0
-                    else -> position - 1
-                }
-                binding.llDotsIndicator.children.forEachIndexed { index, view ->
-                    view.isSelected = (indicatorPosition == index)
-                }
+                emitHeroImageFor(position)
 
                 handler.removeCallbacksAndMessages(null)
                 handler.postDelayed(8_000) {
@@ -189,17 +193,7 @@ class CategoryViewHolder(
         val selected = category.list.getOrNull(category.selectedIndex) as? Show ?: return
 
         fun checkProviderAndRun(show: Show, action: () -> Unit) {
-            val providerName = when(show){
-                is Movie -> show.providerName
-                is TvShow -> show.providerName
-            }
-
-            if (!providerName.isNullOrBlank() && providerName != UserPreferences.currentProvider?.name) {
-                Provider.providers.keys.find { it.name == providerName }?.let {
-                    UserPreferences.currentProvider = it
-                    AppDatabase.setup(itemView.context)
-                }
-            }
+            // StreamingCommunity-only UX: keep navigation on same provider context.
             action()
         }
         

@@ -63,12 +63,10 @@ class GenreViewModel(private val id: String, database: AppDatabase) : ViewModel(
                         shows = state.genre.shows.map { item ->
                             when (item) {
                                 is Movie -> moviesDb.find { it.id == item.id }
-                                    ?.takeIf { !item.isSame(it) }
-                                    ?.let { item.copy().merge(it) }
+                                    ?.let { mergeMovieForList(item, it) }
                                     ?: item
                                 is TvShow -> tvShowsDb.find { it.id == item.id }
-                                    ?.takeIf { !item.isSame(it) }
-                                    ?.let { item.copy().merge(it) }
+                                    ?.let { mergeTvShowForList(item, it) }
                                     ?: item
                             }
                         }
@@ -134,6 +132,28 @@ class GenreViewModel(private val id: String, database: AppDatabase) : ViewModel(
                 Log.e("GenreViewModel", "loadMoreGenreShows: ", e)
                 _state.emit(State.FailedLoading(e))
             }
+        }
+    }
+
+    private fun mergeMovieForList(item: Movie, dbMovie: Movie): Movie {
+        return item.copy(
+            poster = dbMovie.poster ?: item.poster,
+            isFavorite = dbMovie.isFavorite
+        ).also { merged ->
+            merged.isWatched = dbMovie.isWatched
+            merged.watchedDate = dbMovie.watchedDate
+            merged.watchHistory = dbMovie.watchHistory
+            runCatching { item.itemType }.getOrNull()?.let { merged.itemType = it }
+        }
+    }
+
+    private fun mergeTvShowForList(item: TvShow, dbShow: TvShow): TvShow {
+        return item.copy(
+            poster = dbShow.poster ?: item.poster,
+            isFavorite = dbShow.isFavorite
+        ).also { merged ->
+            merged.isWatching = dbShow.isWatching
+            runCatching { item.itemType }.getOrNull()?.let { merged.itemType = it }
         }
     }
 }

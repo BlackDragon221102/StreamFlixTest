@@ -8,6 +8,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.viewbinding.ViewBinding
 import com.streamflixreborn.streamflix.R
 import com.streamflixreborn.streamflix.databinding.ItemGenreGridMobileBinding
+import com.streamflixreborn.streamflix.databinding.ItemGenreMobileBinding
 import com.streamflixreborn.streamflix.databinding.ItemGenreGridTvBinding
 import com.streamflixreborn.streamflix.models.Genre
 
@@ -26,12 +27,30 @@ class GenreViewHolder(
 
         when (_binding) {
             is ItemGenreGridMobileBinding -> displayGridMobileItem(_binding)
+            is ItemGenreMobileBinding -> displayMobileItem(_binding)
             is ItemGenreGridTvBinding -> displayGridTvItem(_binding)
         }
     }
 
 
     private fun displayGridMobileItem(binding: ItemGenreGridMobileBinding) {
+        binding.root.apply {
+            val colors = context.resources.getIntArray(R.array.genres)
+            (background as? GradientDrawable)?.setColor(colors[bindingAdapterPosition % colors.size])
+
+            setOnClickListener {
+                val args = Bundle().apply {
+                    putString("id", genre.id)
+                    putString("name", genre.name)
+                }
+                findNavController().navigate(R.id.genre, args)
+            }
+        }
+
+        binding.tvGenreName.text = genre.name
+    }
+
+    private fun displayMobileItem(binding: ItemGenreMobileBinding) {
         binding.root.apply {
             val colors = context.resources.getIntArray(R.array.genres)
             (background as? GradientDrawable)?.setColor(colors[bindingAdapterPosition % colors.size])

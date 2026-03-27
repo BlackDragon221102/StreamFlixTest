@@ -29,6 +29,7 @@ import com.streamflixreborn.streamflix.databinding.ContentMovieRecommendationsTv
 import com.streamflixreborn.streamflix.databinding.ContentMovieTvBinding
 import com.streamflixreborn.streamflix.databinding.ItemCategorySwiperMobileBinding
 import com.streamflixreborn.streamflix.databinding.ItemMovieGridMobileBinding
+import com.streamflixreborn.streamflix.databinding.ItemMovieGenreMobileBinding
 import com.streamflixreborn.streamflix.databinding.ItemMovieGridTvBinding
 import com.streamflixreborn.streamflix.databinding.ItemMovieMobileBinding
 import com.streamflixreborn.streamflix.databinding.ItemMovieTvBinding
@@ -125,6 +126,7 @@ class MovieViewHolder(
             is ItemMovieMobileBinding -> displayMobileItem(_binding)
             is ItemMovieTvBinding -> displayTvItem(_binding)
             is ItemMovieGridMobileBinding -> displayGridMobileItem(_binding)
+            is ItemMovieGenreMobileBinding -> displayGenreMobileItem(_binding)
             is ItemMovieGridTvBinding -> displayGridTvItem(_binding)
             is ItemCategorySwiperMobileBinding -> displaySwiperMobileItem(_binding)
 
@@ -140,12 +142,7 @@ class MovieViewHolder(
     }
 
     private fun checkProviderAndRun(action: () -> Unit) {
-        if (!movie.providerName.isNullOrBlank() && movie.providerName != UserPreferences.currentProvider?.name) {
-            Provider.providers.keys.find { it.name == movie.providerName }?.let {
-                UserPreferences.currentProvider = it
-                AppDatabase.setup(itemView.context)
-            }
-        }
+        // StreamingCommunity-only UX: avoid implicit provider switching between cards.
         action()
     }
 
@@ -308,6 +305,8 @@ class MovieViewHolder(
                         }
                         is MovieMobileFragment -> findNavController().navigate(MovieMobileFragmentDirections.actionMovieToMovie(id = movie.id))
                         is TvShowMobileFragment -> findNavController().navigate(TvShowMobileFragmentDirections.actionTvShowToMovie(id = movie.id))
+                        // AGGIUNTA FONDAMENTALE PER I CLICK NELLE RIGHE:
+                        is MoviesMobileFragment -> findNavController().navigate(MoviesMobileFragmentDirections.actionMoviesToMovie(id = movie.id))
                     }
                 }
             }
@@ -324,11 +323,7 @@ class MovieViewHolder(
             .into(binding.ivMoviePoster)
 
         binding.tvMovieQuality.apply {
-            text = movie.quality ?: ""
-            visibility = when {
-                text.isNullOrEmpty() -> View.GONE
-                else -> View.VISIBLE
-            }
+            visibility = View.GONE
         }
 
         binding.tvMovieReleasedYear.text = movie.released?.format("yyyy")
@@ -525,9 +520,60 @@ class MovieViewHolder(
         binding.tvMovieTitle.text = movie.title
     }
 
-    private fun displaySwiperMobileItem(binding: ItemCategorySwiperMobileBinding) {
+    private fun displayGenreMobileItem(binding: ItemMovieGenreMobileBinding) {
+        binding.root.apply {
+            setOnClickListener {
+                checkProviderAndRun {
+                    when (context.toActivity()?.getCurrentFragment()) {
+                        is GenreMobileFragment -> findNavController().navigate(GenreMobileFragmentDirections.actionGenreToMovie(id = movie.id))
+                        is MoviesMobileFragment -> findNavController().navigate(MoviesMobileFragmentDirections.actionMoviesToMovie(id = movie.id))
+                        is PeopleMobileFragment -> findNavController().navigate(PeopleMobileFragmentDirections.actionPeopleToMovie(id = movie.id))
+                        is SearchMobileFragment -> findNavController().navigate(SearchMobileFragmentDirections.actionSearchToMovie(id = movie.id))
+                        else -> findNavController().navigate(R.id.movie, android.os.Bundle().apply { putString("id", movie.id) })
+                    }
+                }
+            }
+            setOnLongClickListener {
+                ShowOptionsMobileDialog(context, movie).show()
+                true
+            }
+        }
+
         Glide.with(context)
-            .load(movie.banner)
+            .load(movie.poster)
+            .centerCrop()
+            .transition(DrawableTransitionOptions.withCrossFade())
+            .into(binding.ivMoviePoster)
+
+        binding.pbMovieProgress.apply {
+            val watchHistory = movie.watchHistory
+
+            progress = when {
+                watchHistory != null -> (watchHistory.lastPlaybackPositionMillis * 100 / watchHistory.durationMillis.toDouble()).toInt()
+                else -> 0
+            }
+            visibility = when {
+                watchHistory != null -> View.VISIBLE
+                else -> View.GONE
+            }
+        }
+    }
+
+    private fun displaySwiperMobileItem(binding: ItemCategorySwiperMobileBinding) {
+        val heroImage = when {
+            !movie.banner.isNullOrEmpty() -> movie.banner
+            !movie.poster.isNullOrEmpty() -> movie.poster
+            else -> null
+        }
+
+        Glide.with(context)
+            .load(heroImage)
+            .centerCrop()
+            .transition(DrawableTransitionOptions.withCrossFade())
+            .into(binding.ivSwiperBackgroundFill)
+
+        Glide.with(context)
+            .load(heroImage)
             .centerCrop()
             .transition(DrawableTransitionOptions.withCrossFade())
             .into(binding.ivSwiperBackground)
@@ -573,13 +619,23 @@ class MovieViewHolder(
             text = movie.overview
         }
 
-        binding.btnSwiperWatchNow.apply {
-            setOnClickListener {
-                findNavController().navigate(
-                    HomeMobileFragmentDirections.actionHomeToMovie(
-                        id = movie.id,
-                    )
-                )
+        // CORREZIONE CLICK SUL TASTO "GUARDA ORA"
+        binding.btnSwiperWatchNow.setOnClickListener { view ->
+            checkProviderAndRun {
+                when (context.toActivity()?.getCurrentFragment()) {
+                    is HomeMobileFragment -> view.findNavController().navigate(HomeMobileFragmentDirections.actionHomeToMovie(id = movie.id))
+                    is MoviesMobileFragment -> view.findNavController().navigate(MoviesMobileFragmentDirections.actionMoviesToMovie(id = movie.id))
+                }
+            }
+        }
+
+        // CORREZIONE CLICK SULL'INTERA IMMAGINE DEL BANNER EROE
+        binding.root.setOnClickListener { view ->
+            checkProviderAndRun {
+                when (context.toActivity()?.getCurrentFragment()) {
+                    is HomeMobileFragment -> view.findNavController().navigate(HomeMobileFragmentDirections.actionHomeToMovie(id = movie.id))
+                    is MoviesMobileFragment -> view.findNavController().navigate(MoviesMobileFragmentDirections.actionMoviesToMovie(id = movie.id))
+                }
             }
         }
 

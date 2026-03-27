@@ -31,7 +31,6 @@ import com.streamflixreborn.streamflix.utils.hideKeyboard
 import com.streamflixreborn.streamflix.utils.viewModelsFactory
 import kotlinx.coroutines.launch
 import androidx.navigation.fragment.findNavController
-import com.streamflixreborn.streamflix.providers.Provider
 
 class SearchTvFragment : Fragment() {
 
@@ -41,28 +40,14 @@ class SearchTvFragment : Fragment() {
 
     private val database by lazy { AppDatabase.getInstance(requireContext()) }
     private val viewModel by viewModelsFactory { SearchViewModel(database) }
-    private var isGlobalSearchChecked: Boolean = false
-
     private val appAdapter by lazy {
         AppAdapter().apply {
             onMovieClickListener = { movie ->
-
-                if (movie.providerName != UserPreferences.currentProvider?.name) {
-                    UserPreferences.currentProvider = Provider.providers.keys.find { it.name == movie.providerName }
-                    AppDatabase.setup(requireContext())
-                    Toast.makeText(requireContext(), getString(R.string.switching_to_provider, movie.providerName), Toast.LENGTH_SHORT).show()
-                }
                 findNavController().navigate(
                     SearchTvFragmentDirections.actionSearchToMovie(id = movie.id)
                 )
             }
             onTvShowClickListener = { tvShow ->
-
-                if (tvShow.providerName != UserPreferences.currentProvider?.name) {
-                    UserPreferences.currentProvider = Provider.providers.keys.find { it.name == tvShow.providerName }
-                    AppDatabase.setup(requireContext())
-                    Toast.makeText(requireContext(), getString(R.string.switching_to_provider, tvShow.providerName), Toast.LENGTH_SHORT).show()
-                }
                 findNavController().navigate(
                     SearchTvFragmentDirections.actionSearchToTvShow(id = tvShow.id)
                 )
@@ -154,25 +139,12 @@ class SearchTvFragment : Fragment() {
     }
 
     private fun initializeSearch() {
-        binding.llGlobalSearch.setOnClickListener {
-            isGlobalSearchChecked = !isGlobalSearchChecked
-            binding.ivGlobalSearchSwitch.setImageResource(
-                if (isGlobalSearchChecked) R.drawable.ic_switch_on else R.drawable.ic_switch_off
-            )
-        }
-
         binding.etSearch.apply {
             setOnEditorActionListener { _, actionId, _ ->
                 if (actionId == EditorInfo.IME_ACTION_SEARCH) {
                     val query = text.toString()
                     hideKeyboard()
-
-                    if (isGlobalSearchChecked) {
-                        val currentLanguage = UserPreferences.currentProvider?.language ?: "es"
-                        viewModel.searchGlobal(query, currentLanguage)
-                    } else {
-                        viewModel.search(query)
-                    }
+                    viewModel.search(query)
                     return@setOnEditorActionListener true
                 }
                 return@setOnEditorActionListener false
@@ -233,6 +205,7 @@ class SearchTvFragment : Fragment() {
         }
 
         binding.root.requestFocus()
+        binding.llGlobalSearch.visibility = View.GONE
     }
 
     private fun displaySearch(list: List<AppAdapter.Item>, hasMore: Boolean) {

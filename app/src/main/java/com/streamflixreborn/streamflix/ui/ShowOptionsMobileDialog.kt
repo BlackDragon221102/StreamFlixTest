@@ -16,11 +16,9 @@ import com.streamflixreborn.streamflix.fragments.home.HomeMobileFragmentDirectio
 import com.streamflixreborn.streamflix.models.Episode
 import com.streamflixreborn.streamflix.models.Movie
 import com.streamflixreborn.streamflix.models.TvShow
-import com.streamflixreborn.streamflix.utils.UserPreferences
 import com.streamflixreborn.streamflix.utils.format
 import com.streamflixreborn.streamflix.utils.getCurrentFragment
 import com.streamflixreborn.streamflix.utils.toActivity
-import com.streamflixreborn.streamflix.providers.Provider
 import java.util.Calendar
 
 class ShowOptionsMobileDialog(
@@ -33,19 +31,7 @@ class ShowOptionsMobileDialog(
     private val database = AppDatabase.getInstance(context)
 
     private fun checkProviderAndRun(show: AppAdapter.Item, action: () -> Unit) {
-        val providerName = when(show){
-            is Movie -> show.providerName
-            is TvShow -> show.providerName
-            is Episode -> show.tvShow?.providerName
-            else -> null
-        }
-
-        if (!providerName.isNullOrBlank() && providerName != UserPreferences.currentProvider?.name) {
-            Provider.providers.keys.find { it.name == providerName }?.let {
-                UserPreferences.currentProvider = it
-                AppDatabase.setup(context)
-            }
-        }
+        // StreamingCommunity-only UX: non cambiamo provider in base all'item.
         action()
     }
 

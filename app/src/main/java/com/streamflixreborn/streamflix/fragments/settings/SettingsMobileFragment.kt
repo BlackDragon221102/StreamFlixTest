@@ -20,6 +20,7 @@ import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.SwitchPreference
 import androidx.preference.SwitchPreferenceCompat
 import androidx.preference.PreferenceManager
+import androidx.recyclerview.widget.RecyclerView
 import com.streamflixreborn.streamflix.BuildConfig
 import com.streamflixreborn.streamflix.R
 import com.streamflixreborn.streamflix.activities.main.MainMobileActivity
@@ -34,6 +35,7 @@ import com.streamflixreborn.streamflix.providers.StreamingCommunityProvider
 import com.streamflixreborn.streamflix.providers.TmdbProvider
 import com.streamflixreborn.streamflix.utils.DnsResolver
 import com.streamflixreborn.streamflix.utils.ProviderChangeNotifier
+import com.streamflixreborn.streamflix.utils.TopLevelTabFragment
 import com.streamflixreborn.streamflix.utils.UserPreferences
 import kotlinx.coroutines.launch
 import java.io.IOException
@@ -41,7 +43,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class SettingsMobileFragment : PreferenceFragmentCompat() {
+class SettingsMobileFragment : PreferenceFragmentCompat(), TopLevelTabFragment {
 
     private val DEFAULT_DOMAIN_VALUE = "streamingunity.buzz"
     private val DEFAULT_CUEVANA_DOMAIN_VALUE = "cuevana3.la"
@@ -608,5 +610,29 @@ class SettingsMobileFragment : PreferenceFragmentCompat() {
         findPreference<SwitchPreference>("PLAYER_GESTURES")?.isChecked = UserPreferences.playerGestures
         findPreference<SwitchPreference>("KEEP_SCREEN_ON_WHEN_PAUSED")?.isChecked = UserPreferences.keepScreenOnWhenPaused
         findPreference<SwitchPreferenceCompat>("ENABLE_TMDB")?.isChecked = UserPreferences.enableTmdb
+    }
+
+    override fun onTopLevelTabSelected(animate: Boolean) {
+        val list = view?.findViewById<RecyclerView>(androidx.preference.R.id.recycler_view) ?: return
+
+        if (!animate) {
+            list.scrollToPosition(0)
+            list.post { list.scrollToPosition(0) }
+            return
+        }
+
+        list.animate().cancel()
+        list.animate()
+            .alpha(0f)
+            .setDuration(200L)
+            .withEndAction {
+                list.scrollToPosition(0)
+                list.post { list.scrollToPosition(0) }
+                list.animate()
+                    .alpha(1f)
+                    .setDuration(200L)
+                    .start()
+            }
+            .start()
     }
 }
