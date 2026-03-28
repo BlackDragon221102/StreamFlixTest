@@ -15,6 +15,22 @@ function Fail($Message) {
     exit 1
 }
 
+function Invoke-GitOrFail {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Description,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$Arguments
+    )
+
+    Write-Host $Description
+    & git @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        Fail "Comando git fallito: git $($Arguments -join ' ')"
+    }
+}
+
 function Update-AndroidVersioning {
     param(
         [string]$GradleFilePath,
@@ -121,11 +137,9 @@ if ($hasChanges) {
         $CommitMessage = "Release $Version"
     }
 
-    Write-Host "Stage delle modifiche..."
-    git add -A
+    Invoke-GitOrFail -Description "Stage delle modifiche..." -Arguments @("add", "-A")
 
-    Write-Host "Commit delle modifiche..."
-    git commit -m $CommitMessage
+    Invoke-GitOrFail -Description "Commit delle modifiche..." -Arguments @("commit", "-m", $CommitMessage)
 } else {
     Write-Host "Nessuna modifica da committare. Continuo con push e tag."
 }
@@ -144,14 +158,11 @@ if ($confirmation -notin @("s", "S", "si", "SI", "Si")) {
     Fail "Pubblicazione annullata."
 }
 
-Write-Host "Push del branch '$Branch'..."
-git push origin $Branch
+Invoke-GitOrFail -Description "Push del branch '$Branch'..." -Arguments @("push", "origin", $Branch)
 
-Write-Host "Creazione tag $Version..."
-git tag -a $Version -m "Release $Version"
+Invoke-GitOrFail -Description "Creazione tag $Version..." -Arguments @("tag", "-a", $Version, "-m", "Release $Version")
 
-Write-Host "Push del tag $Version..."
-git push origin $Version
+Invoke-GitOrFail -Description "Push del tag $Version..." -Arguments @("push", "origin", $Version)
 
 Write-Host ""
 Write-Host "Pubblicazione avviata."
