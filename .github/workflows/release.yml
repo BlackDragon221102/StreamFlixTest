@@ -37,9 +37,20 @@ jobs:
       - name: Build APK Release
         run: ./gradlew assembleRelease --stacktrace
 
+      - name: Trova APK Release
+        id: find_apk
+        run: |
+          APK_PATH=$(find app/build/outputs/apk/release -maxdepth 1 -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "Nessun APK trovato nella cartella release"
+            ls -R app/build/outputs/apk || true
+            exit 1
+          fi
+          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+
       - name: Rinomina APK con Versione
-        # Questo comando rinomina il file app-release.apk in StreamFlix-v1.0.1.apk (per esempio)
-        run: mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/StreamFlix-${{ github.ref_name }}.apk
+        # Rinomina il primo APK generato in release con il nome versione desiderato
+        run: mv "${{ steps.find_apk.outputs.apk_path }}" "app/build/outputs/apk/release/StreamFlix-${{ github.ref_name }}.apk"
 
       - name: Crea Release e Carica APK
         uses: softprops/action-gh-release@v2
