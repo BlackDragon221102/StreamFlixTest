@@ -48,6 +48,11 @@ jobs:
           files: app/build/outputs/apk/release/StreamFlix-${{ github.ref_name }}.apk
           tag_name: ${{ github.ref_name }}
           name: Streamflix Release ${{ github.ref_name }}
-          body: "Nuovo aggiornamento di Streamflix! Scarica l'APK personalizzata qui sotto."
+          body: |
+            Nuovo aggiornamento di Streamflix.
+
+            APK allegato:
+            - StreamFlix-${{ github.ref_name }}.apk
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
