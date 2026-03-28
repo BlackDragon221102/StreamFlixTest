@@ -3,7 +3,7 @@ name: Build & Release Streamflix
 on:
   push:
     tags:
-      - 'v*' # Si attiva solo quando crei un tag (es. v1.0.0)
+      - 'v*' # Si attiva solo quando crei un tag (es. v1.0.1)
 
 jobs:
   build-and-release:
@@ -26,20 +26,28 @@ jobs:
         env:
           TMDB_KEY: ${{ secrets.TMDB_API_KEY }}
         run: |
+          echo "APP_LAYOUT=mobile" >> local.properties
           echo "TMDB_API_KEY=$TMDB_KEY" >> local.properties
+          echo "SUBDL_API_KEY=" >> local.properties
+          echo "RABBITSTREAM_SOURCE_API=" >> local.properties
 
       - name: Permessi Gradle
         run: chmod +x ./gradlew
 
-      - name: Build APK (Versione Universale)
-        run: ./gradlew assembleDebug --stacktrace
+      - name: Build APK Release
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Rinomina APK con Versione
+        # Questo comando rinomina il file app-release.apk in StreamFlix-v1.0.1.apk (per esempio)
+        run: mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/StreamFlix-${{ github.ref_name }}.apk
 
       - name: Crea Release e Carica APK
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/debug/app-debug.apk
+          # Qui diciamo di caricare il file con il nuovo nome
+          files: app/build/outputs/apk/release/StreamFlix-${{ github.ref_name }}.apk
           tag_name: ${{ github.ref_name }}
           name: Streamflix Release ${{ github.ref_name }}
-          body: "Nuovo aggiornamento di Streamflix! Scarica l'APK qui sotto."
+          body: "Nuovo aggiornamento di Streamflix! Scarica l'APK personalizzata qui sotto."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
