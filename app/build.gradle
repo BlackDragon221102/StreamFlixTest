@@ -25,13 +25,18 @@ android {
 
     def properties = new Properties()
     properties.load(project.rootProject.file('local.properties').newDataInputStream())
+    def releaseStoreFile = properties.getProperty("RELEASE_STORE_FILE")
+    def releaseStorePassword = properties.getProperty("RELEASE_STORE_PASSWORD")
+    def releaseKeyAlias = properties.getProperty("RELEASE_KEY_ALIAS")
+    def releaseKeyPassword = properties.getProperty("RELEASE_KEY_PASSWORD")
+    def hasReleaseSigning = [releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword].every { it != null && !it.isEmpty() }
 
     defaultConfig {
         applicationId "com.streamflixreborn.streamflix"
         minSdk 21
         targetSdk 35
-        versionCode 136
-        versionName "2.0.3"
+        versionCode 137
+        versionName "2.0.4"
 
         buildConfigField "String", "APP_LAYOUT", "\"${properties.getProperty("APP_LAYOUT")}\""
         buildConfigField "String", "TMDB_API_KEY", "\"${properties.getProperty("TMDB_API_KEY")}\""
@@ -60,6 +65,17 @@ android {
         jvmTarget = '17'
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         debug {
             minifyEnabled false
@@ -69,6 +85,9 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 

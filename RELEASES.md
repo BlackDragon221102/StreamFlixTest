@@ -14,6 +14,13 @@ Passaggi:
 - crea e pusha il tag
 - GitHub Actions crea la release e allega l'APK
 
+Secrets GitHub richiesti per una release installabile:
+- `TMDB_API_KEY`
+- `RELEASE_KEYSTORE_BASE64`
+- `RELEASE_STORE_PASSWORD`
+- `RELEASE_KEY_ALIAS`
+- `RELEASE_KEY_PASSWORD`
+
 ## Eliminare un tag release
 
 ```powershell
