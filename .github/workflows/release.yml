@@ -1,124 +1,45 @@
-name: Build & Release APK
+name: Build & Release Streamflix
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*' # Si attiva solo quando crei un tag (es. v1.0.0)
 
 jobs:
   build-and-release:
-    name: Build & Release APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v1
+      - name: Checkout del codice
+        uses: actions/checkout@v4
 
-      - name: Setup JDK environment
-        uses: actions/setup-java@v1
+      - name: Configurazione Java JDK 17
+        uses: actions/setup-java@v4
         with:
-          java-version: 17
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
 
-      - name: Access Secrets
+      - name: Inserimento Chiave TMDB
         env:
-          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-          RABBITSTREAM_SOURCE_API: ${{ secrets.RABBITSTREAM_SOURCE_API }}
+          TMDB_KEY: ${{ secrets.TMDB_API_KEY }}
         run: |
-          echo TMDB_API_KEY=$TMDB_API_KEY >> local.properties
-          echo RABBITSTREAM_SOURCE_API=$RABBITSTREAM_SOURCE_API >> local.properties
+          echo "TMDB_API_KEY=$TMDB_KEY" >> local.properties
 
-      - name: Make Gradle executable
+      - name: Permessi Gradle
         run: chmod +x ./gradlew
 
-      - name: Build APK
-        run: ./gradlew assembleRelease --stacktrace
+      - name: Build APK (Versione Universale)
+        run: ./gradlew assembleDebug --stacktrace
 
-      - name: Sign APK
-        id: sign_apk
-        uses: r0adkll/sign-android-release@v1
+      - name: Crea Release e Carica APK
+        uses: softprops/action-gh-release@v2
         with:
-          releaseDirectory: app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.KEYSTORE }}
-          alias: ${{ secrets.SIGNING_KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.SIGNING_STORE_PASSWORD }}
-          keyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
-        env:
-          BUILD_TOOLS_VERSION: "34.0.0"
-
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
+          files: app/build/outputs/apk/debug/app-debug.apk
+          tag_name: ${{ github.ref_name }}
+          name: Streamflix Release ${{ github.ref_name }}
+          body: "Nuovo aggiornamento di Streamflix! Scarica l'APK qui sotto."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-
-      - name: Upload Release APK
-        uses: actions/upload-release-asset@v1.0.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ steps.sign_apk.outputs.signedReleaseFile }}
-          asset_name: ${{ github.event.repository.name }}-${{ github.ref_name }}.apk
-          asset_content_type: application/zip
-
-
-      - name: Set Mobile version
-        run: |
-          echo APP_LAYOUT=mobile >> local.properties
-
-      - name: Build APK
-        run: ./gradlew assembleRelease --stacktrace
-
-      - name: Sign APK
-        id: sign_apk_mobile
-        uses: r0adkll/sign-android-release@v1
-        with:
-          releaseDirectory: app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.KEYSTORE }}
-          alias: ${{ secrets.SIGNING_KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.SIGNING_STORE_PASSWORD }}
-          keyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
-        env:
-          BUILD_TOOLS_VERSION: "34.0.0"
-
-      - name: Upload Release APK
-        uses: actions/upload-release-asset@v1.0.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ steps.sign_apk_mobile.outputs.signedReleaseFile }}
-          asset_name: ${{ github.event.repository.name }}-${{ github.ref_name }}-only-mobile.apk
-          asset_content_type: application/zip
-
-
-      - name: Set TV version
-        run: |
-          echo APP_LAYOUT=tv >> local.properties
-
-      - name: Build APK
-        run: ./gradlew assembleRelease --stacktrace
-
-      - name: Sign APK
-        id: sign_apk_tv
-        uses: r0adkll/sign-android-release@v1
-        with:
-          releaseDirectory: app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.KEYSTORE }}
-          alias: ${{ secrets.SIGNING_KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.SIGNING_STORE_PASSWORD }}
-          keyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
-        env:
-          BUILD_TOOLS_VERSION: "34.0.0"
-
-      - name: Upload Release APK
-        uses: actions/upload-release-asset@v1.0.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ steps.sign_apk_tv.outputs.signedReleaseFile }}
-          asset_name: ${{ github.event.repository.name }}-${{ github.ref_name }}-only-tv.apk
-          asset_content_type: application/zip
