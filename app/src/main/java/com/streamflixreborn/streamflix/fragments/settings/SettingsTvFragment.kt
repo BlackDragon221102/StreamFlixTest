@@ -273,6 +273,16 @@ class SettingsTvFragment : LeanbackPreferenceFragmentCompat() {
             setOnPreferenceClickListener(null)
         }
 
+        findPreference<Preference>("p_settings_help")?.setOnPreferenceClickListener {
+            startActivity(
+                Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("https://github.com/BlackDragon221102/StreamFlixTest")
+                )
+            )
+            true
+        }
+
         findPreference<SwitchPreference>("AUTOPLAY")?.isChecked = UserPreferences.autoplay
         findPreference<SwitchPreference>("AUTOPLAY")?.setOnPreferenceChangeListener { _, newValue ->
             UserPreferences.autoplay = newValue as Boolean

@@ -7,6 +7,8 @@ import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.viewModels
@@ -102,9 +104,11 @@ class MainMobileActivity : FragmentActivity() {
         }
 
         binding.bnvMain.setOnItemSelectedListener { item ->
+            animateBottomNavItem(item.itemId)
             navigateToTopLevelDestination(navController, item.itemId)
         }
         binding.bnvMain.setOnItemReselectedListener { item ->
+            animateBottomNavItem(item.itemId)
             navigateToTopLevelDestination(navController, item.itemId)
         }
         
@@ -218,6 +222,32 @@ class MainMobileActivity : FragmentActivity() {
             })
         }
         return true
+    }
+
+    private fun animateBottomNavItem(itemId: Int) {
+        val itemView = binding.bnvMain.findViewById<View>(itemId) ?: return
+
+        itemView.animate().cancel()
+        itemView.scaleX = 1f
+        itemView.scaleY = 1f
+        itemView.alpha = 1f
+
+        itemView.animate()
+            .scaleX(1.075f)
+            .scaleY(1.075f)
+            .alpha(1f)
+            .setDuration(180L)
+            .setInterpolator(DecelerateInterpolator())
+            .withEndAction {
+                itemView.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .alpha(1f)
+                    .setDuration(260L)
+                    .setInterpolator(OvershootInterpolator(0.28f))
+                    .start()
+            }
+            .start()
     }
 
     fun updateImmersiveMode() {
