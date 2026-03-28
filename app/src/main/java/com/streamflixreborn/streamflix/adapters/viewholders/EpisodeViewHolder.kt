@@ -260,52 +260,54 @@ class EpisodeViewHolder(
         binding.root.apply {
             setOnClickListener {
                 findNavController().navigate(
-                    HomeMobileFragmentDirections.actionHomeToTvShow(
-                        id = episode.tvShow?.id ?: "",
-                    )
-                )
-                findNavController().navigate(
-                    TvShowMobileFragmentDirections.actionTvShowToPlayer(
-                        id = episode.id,
-                        title = episode.tvShow?.title ?: "",
-                        subtitle = episode.season?.takeIf { it.number != 0 }?.let { season ->
-                            context.getString(
-                                R.string.player_subtitle_tv_show,
-                                season.number,
+                    R.id.player,
+                    android.os.Bundle().apply {
+                        putString("id", episode.id)
+                        putString("title", episode.tvShow?.title ?: "")
+                        putString(
+                            "subtitle",
+                            episode.season?.takeIf { it.number != 0 }?.let { season ->
+                                context.getString(
+                                    R.string.player_subtitle_tv_show,
+                                    season.number,
+                                    episode.number,
+                                    episode.title ?: context.getString(
+                                        R.string.episode_number,
+                                        episode.number
+                                    )
+                                )
+                            } ?: context.getString(
+                                R.string.player_subtitle_tv_show_episode_only,
                                 episode.number,
                                 episode.title ?: context.getString(
                                     R.string.episode_number,
                                     episode.number
                                 )
                             )
-                        } ?: context.getString(
-                            R.string.player_subtitle_tv_show_episode_only,
-                            episode.number,
-                            episode.title ?: context.getString(
-                                R.string.episode_number,
-                                episode.number
+                        )
+                        putSerializable(
+                            "videoType",
+                            Video.Type.Episode(
+                                id = episode.id,
+                                number = episode.number,
+                                title = episode.title,
+                                poster = episode.poster,
+                                overview = episode.overview,
+                                tvShow = Video.Type.Episode.TvShow(
+                                    id = episode.tvShow?.id ?: "",
+                                    title = episode.tvShow?.title ?: "",
+                                    poster = episode.tvShow?.poster,
+                                    banner = episode.tvShow?.banner,
+                                    releaseDate = episode.tvShow?.released?.format("yyyy-MM-dd"),
+                                    imdbId = episode.tvShow?.imdbId,
+                                ),
+                                season = Video.Type.Episode.Season(
+                                    number = episode.season?.number ?: 0,
+                                    title = episode.season?.title,
+                                ),
                             )
-                        ),
-                        videoType = Video.Type.Episode(
-                            id = episode.id,
-                            number = episode.number,
-                            title = episode.title,
-                            poster = episode.poster,
-                            overview = episode.overview,
-                            tvShow = Video.Type.Episode.TvShow(
-                                id = episode.tvShow?.id ?: "",
-                                title = episode.tvShow?.title ?: "",
-                                poster = episode.tvShow?.poster,
-                                banner = episode.tvShow?.banner,
-                                releaseDate = episode.tvShow?.released?.format("yyyy-MM-dd"),
-                                imdbId = episode.tvShow?.imdbId,
-                            ),
-                            season = Video.Type.Episode.Season(
-                                number = episode.season?.number ?: 0,
-                                title = episode.season?.title,
-                            ),
-                        ),
-                    )
+                        )
+                    }
                 )
             }
             setOnLongClickListener {
@@ -364,52 +366,54 @@ class EpisodeViewHolder(
         binding.root.apply {
             setOnClickListener {
                 findNavController().navigate(
-                    HomeTvFragmentDirections.actionHomeToTvShow(
-                        id = episode.tvShow?.id ?: "",
-                    )
-                )
-                findNavController().navigate(
-                    TvShowTvFragmentDirections.actionTvShowToPlayer(
-                        id = episode.id,
-                        title = episode.tvShow?.title ?: "",
-                        subtitle = episode.season?.takeIf { it.number != 0 }?.let { season ->
-                            context.getString(
-                                R.string.player_subtitle_tv_show,
-                                season.number,
+                    R.id.player,
+                    android.os.Bundle().apply {
+                        putString("id", episode.id)
+                        putString("title", episode.tvShow?.title ?: "")
+                        putString(
+                            "subtitle",
+                            episode.season?.takeIf { it.number != 0 }?.let { season ->
+                                context.getString(
+                                    R.string.player_subtitle_tv_show,
+                                    season.number,
+                                    episode.number,
+                                    episode.title ?: context.getString(
+                                        R.string.episode_number,
+                                        episode.number
+                                    )
+                                )
+                            } ?: context.getString(
+                                R.string.player_subtitle_tv_show_episode_only,
                                 episode.number,
                                 episode.title ?: context.getString(
                                     R.string.episode_number,
                                     episode.number
                                 )
                             )
-                        } ?: context.getString(
-                            R.string.player_subtitle_tv_show_episode_only,
-                            episode.number,
-                            episode.title ?: context.getString(
-                                R.string.episode_number,
-                                episode.number
+                        )
+                        putSerializable(
+                            "videoType",
+                            Video.Type.Episode(
+                                id = episode.id,
+                                number = episode.number,
+                                title = episode.title,
+                                poster = episode.poster,
+                                overview = episode.overview,
+                                tvShow = Video.Type.Episode.TvShow(
+                                    id = episode.tvShow?.id ?: "",
+                                    title = episode.tvShow?.title ?: "",
+                                    poster = episode.tvShow?.poster,
+                                    banner = episode.tvShow?.banner,
+                                    releaseDate = episode.tvShow?.released?.format("yyyy-MM-dd"),
+                                    imdbId = episode.tvShow?.imdbId,
+                                ),
+                                season = Video.Type.Episode.Season(
+                                    number = episode.season?.number ?: 0,
+                                    title = episode.season?.title,
+                                ),
                             )
-                        ),
-                        videoType = Video.Type.Episode(
-                            id = episode.id,
-                            number = episode.number,
-                            title = episode.title,
-                            poster = episode.poster,
-                            overview = episode.overview,
-                            tvShow = Video.Type.Episode.TvShow(
-                                id = episode.tvShow?.id ?: "",
-                                title = episode.tvShow?.title ?: "",
-                                poster = episode.tvShow?.poster,
-                                banner = episode.tvShow?.banner,
-                                releaseDate = episode.tvShow?.released?.format("yyyy-MM-dd"),
-                                imdbId = episode.tvShow?.imdbId,
-                            ),
-                            season = Video.Type.Episode.Season(
-                                number = episode.season?.number ?: 0,
-                                title = episode.season?.title,
-                            ),
-                        ),
-                    )
+                        )
+                    }
                 )
             }
             setOnLongClickListener {

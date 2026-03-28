@@ -12,6 +12,7 @@ import android.view.animation.AnimationUtils
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.findNavController
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.RecyclerView
@@ -80,7 +81,6 @@ import com.streamflixreborn.streamflix.providers.Provider
 import android.view.KeyEvent
 import com.streamflixreborn.streamflix.databinding.ContentMovieDirectorsMobileBinding
 import com.streamflixreborn.streamflix.databinding.ContentMovieDirectorsTvBinding
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -144,6 +144,12 @@ class MovieViewHolder(
     private fun checkProviderAndRun(action: () -> Unit) {
         // StreamingCommunity-only UX: avoid implicit provider switching between cards.
         action()
+    }
+
+    private fun launchBoundToScreen(block: suspend () -> Unit) {
+        context.toActivity()?.lifecycleScope?.launch {
+            block()
+        }
     }
 
     private fun isPackageInstalled(packageName: String): Boolean {
@@ -759,19 +765,21 @@ class MovieViewHolder(
             }
 
             setOnClickListener {
-                CoroutineScope(Dispatchers.IO).launch {
+                launchBoundToScreen {
                     val dao = database.movieDao()
-                    val current = dao.getById(movie.id)?.isFavorite ?: false
+                    val current = withContext(Dispatchers.IO) {
+                        dao.getById(movie.id)?.isFavorite ?: false
+                    }
                     val newValue = !current
 
-                    dao.setFavorite(movie.id, newValue)
-
-                    withContext(Dispatchers.Main) {
-                        movie.isFavorite = newValue
-                        setImageDrawable(
-                            ContextCompat.getDrawable(context, newValue.drawable())
-                        )
+                    withContext(Dispatchers.IO) {
+                        dao.setFavorite(movie.id, newValue)
                     }
+
+                    movie.isFavorite = newValue
+                    setImageDrawable(
+                        ContextCompat.getDrawable(context, newValue.drawable())
+                    )
                 }
             }
 
@@ -884,19 +892,21 @@ class MovieViewHolder(
             }
 
             setOnClickListener {
-                CoroutineScope(Dispatchers.IO).launch {
+                launchBoundToScreen {
                     val dao = database.movieDao()
-                    val current = dao.getById(movie.id)?.isFavorite ?: false
+                    val current = withContext(Dispatchers.IO) {
+                        dao.getById(movie.id)?.isFavorite ?: false
+                    }
                     val newValue = !current
 
-                    dao.setFavorite(movie.id, newValue)
-
-                    withContext(Dispatchers.Main) {
-                        movie.isFavorite = newValue
-                        setImageDrawable(
-                            ContextCompat.getDrawable(context, newValue.drawable())
-                        )
+                    withContext(Dispatchers.IO) {
+                        dao.setFavorite(movie.id, newValue)
                     }
+
+                    movie.isFavorite = newValue
+                    setImageDrawable(
+                        ContextCompat.getDrawable(context, newValue.drawable())
+                    )
                 }
             }
 

@@ -6,7 +6,6 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
-import androidx.core.os.postDelayed
 import androidx.core.view.children
 import androidx.navigation.findNavController
 import androidx.recyclerview.widget.RecyclerView
@@ -42,6 +41,9 @@ class CategoryViewHolder(
 
     private val context = itemView.context
     private lateinit var category: Category
+    private val mobileSwiperHandler = Handler(Looper.getMainLooper())
+    private var mobileSwiperCallback: ViewPager2.OnPageChangeCallback? = null
+    private var mobileSwiperAutoScroll: Runnable? = null
 
     val childRecyclerView: RecyclerView?
         get() = when (_binding) {
@@ -120,16 +122,16 @@ class CategoryViewHolder(
         onHeroImageChange: ((String?) -> Unit)?
     ) {
         binding.tvCategoryTitle.text = category.name
-        val handler = Handler(Looper.getMainLooper())
-        handler.postDelayed(8_000) {
-            binding.vpCategorySwiper.currentItem += 1
-        }
 
         val items = listOf(
             listOfNotNull(category.list.lastOrNull()),
             category.list,
             listOfNotNull(category.list.firstOrNull()),
         ).flatten()
+
+        mobileSwiperAutoScroll?.let { mobileSwiperHandler.removeCallbacks(it) }
+        mobileSwiperCallback?.let { binding.vpCategorySwiper.unregisterOnPageChangeCallback(it) }
+
         binding.vpCategorySwiper.apply {
             setPageTransformer { page, _ ->
                 val lp = page.layoutParams
@@ -144,8 +146,7 @@ class CategoryViewHolder(
             adapter = AppAdapter().apply {
                 this.onMovieClickListener = onMovieClick
                 this.onTvShowClickListener = onTvShowClick
-                submitList(category.list)
-                post { (adapter as AppAdapter).submitList(items) }
+                submitList(items)
             }
         }
 
@@ -159,16 +160,25 @@ class CategoryViewHolder(
             onHeroImageChange?.invoke(imageUrl)
         }
 
-        emitHeroImageFor(1)
+        fun scheduleAutoScroll() {
+            mobileSwiperAutoScroll?.let { mobileSwiperHandler.removeCallbacks(it) }
+            if (items.size <= 1) return
+            mobileSwiperAutoScroll = Runnable {
+                binding.vpCategorySwiper.currentItem += 1
+            }.also { runnable ->
+                mobileSwiperHandler.postDelayed(runnable, 8_000)
+            }
+        }
 
-        binding.vpCategorySwiper.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+        val initialPosition = if (items.size > 1) 1 else 0
+        binding.vpCategorySwiper.setCurrentItem(initialPosition, false)
+        emitHeroImageFor(initialPosition)
+        scheduleAutoScroll()
+
+        mobileSwiperCallback = object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 emitHeroImageFor(position)
-
-                handler.removeCallbacksAndMessages(null)
-                handler.postDelayed(8_000) {
-                    binding.vpCategorySwiper.currentItem += 1
-                }
+                scheduleAutoScroll()
             }
 
             override fun onPageScrollStateChanged(state: Int) {
@@ -185,7 +195,8 @@ class CategoryViewHolder(
                     }
                 }
             }
-        })
+        }
+        binding.vpCategorySwiper.registerOnPageChangeCallback(mobileSwiperCallback!!)
     }
 
     private fun displayTvSwiper(binding: ContentCategorySwiperTvBinding) {

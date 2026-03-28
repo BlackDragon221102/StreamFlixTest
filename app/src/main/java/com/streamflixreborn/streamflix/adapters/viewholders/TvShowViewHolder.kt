@@ -12,6 +12,7 @@ import android.widget.Toast
 import android.util.Log
 import androidx.core.net.toUri
 import androidx.core.view.isVisible
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.findNavController
 import androidx.recyclerview.widget.RecyclerView
@@ -27,7 +28,6 @@ import com.streamflixreborn.streamflix.fragments.home.HomeTvFragmentDirections
 import androidx.core.content.ContextCompat
 import androidx.preference.PreferenceManager
 import android.app.AlertDialog
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -113,6 +113,12 @@ class TvShowViewHolder(
     private fun checkProviderAndRun(action: () -> Unit) {
         // StreamingCommunity-only UX: avoid implicit provider switching between cards.
         action()
+    }
+
+    private fun launchBoundToScreen(block: suspend () -> Unit) {
+        context.toActivity()?.lifecycleScope?.launch {
+            block()
+        }
     }
 
     private fun handleDirectPlay(navController: NavController) {
@@ -587,19 +593,21 @@ class TvShowViewHolder(
             }
 
             setOnClickListener {
-                CoroutineScope(Dispatchers.IO).launch {
+                launchBoundToScreen {
                     val dao = database.tvShowDao()
-                    val current = dao.getById(tvShow.id)?.isFavorite ?: false
+                    val current = withContext(Dispatchers.IO) {
+                        dao.getById(tvShow.id)?.isFavorite ?: false
+                    }
                     val newValue = !current
 
-                    dao.setFavorite(tvShow.id, newValue)
-
-                    withContext(Dispatchers.Main) {
-                        tvShow.isFavorite = newValue
-                        setImageDrawable(
-                            ContextCompat.getDrawable(context, newValue.drawable())
-                        )
+                    withContext(Dispatchers.IO) {
+                        dao.setFavorite(tvShow.id, newValue)
                     }
+
+                    tvShow.isFavorite = newValue
+                    setImageDrawable(
+                        ContextCompat.getDrawable(context, newValue.drawable())
+                    )
                 }
             }
 
@@ -716,19 +724,21 @@ class TvShowViewHolder(
             }
 
             setOnClickListener {
-                CoroutineScope(Dispatchers.IO).launch {
+                launchBoundToScreen {
                     val dao = database.tvShowDao()
-                    val current = dao.getById(tvShow.id)?.isFavorite ?: false
+                    val current = withContext(Dispatchers.IO) {
+                        dao.getById(tvShow.id)?.isFavorite ?: false
+                    }
                     val newValue = !current
 
-                    dao.setFavorite(tvShow.id, newValue)
-
-                    withContext(Dispatchers.Main) {
-                        tvShow.isFavorite = newValue
-                        setImageDrawable(
-                            ContextCompat.getDrawable(context, newValue.drawable())
-                        )
+                    withContext(Dispatchers.IO) {
+                        dao.setFavorite(tvShow.id, newValue)
                     }
+
+                    tvShow.isFavorite = newValue
+                    setImageDrawable(
+                        ContextCompat.getDrawable(context, newValue.drawable())
+                    )
                 }
             }
 

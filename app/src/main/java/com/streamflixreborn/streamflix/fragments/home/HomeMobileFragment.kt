@@ -31,7 +31,6 @@ import com.streamflixreborn.streamflix.utils.TopLevelTabFragment
 import kotlinx.coroutines.launch
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
-import androidx.palette.graphics.Palette
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -39,6 +38,7 @@ import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.withContext
+import com.streamflixreborn.streamflix.utils.HeroColorUtils
 
 class HomeMobileFragment : Fragment(), TopLevelTabFragment {
 
@@ -52,8 +52,10 @@ class HomeMobileFragment : Fragment(), TopLevelTabFragment {
     private var heroColorJob: Job? = null
     private var heroColorAnimator: ValueAnimator? = null
     private var lastHeroImageUrl: String? = null
-    private var heroBaseColor: Int = DEFAULT_HERO_COLOR
+    private var heroBaseColor: Int = HeroColorUtils.DEFAULT_HERO_COLOR
     private val heroColorCache = mutableMapOf<String, Int>()
+
+    private fun heroCacheKey(imageUrl: String): String = "${HeroColorUtils.CACHE_VERSION}|$imageUrl"
 
     private val viewModel: HomeViewModel by lazy {
         val providerKey = UserPreferences.currentProvider?.name ?: "default"
@@ -216,7 +218,7 @@ class HomeMobileFragment : Fragment(), TopLevelTabFragment {
         }
 
         binding.ivHomeBackground.visibility = View.VISIBLE
-        binding.ivHomeBackground.setBackgroundColor(DEFAULT_HERO_COLOR)
+        binding.ivHomeBackground.setBackgroundColor(HeroColorUtils.DEFAULT_HERO_COLOR)
         binding.headerContainer.setBackgroundColor(Color.TRANSPARENT)
         applyHomeBackgroundByScroll()
         updateHeaderBackgroundByScroll()
@@ -243,30 +245,31 @@ class HomeMobileFragment : Fragment(), TopLevelTabFragment {
         heroColorJob?.cancel()
 
         if (requestedImageUrl == null) {
-            animateHeroBaseColorTo(DEFAULT_HERO_COLOR)
+            animateHeroBaseColorTo(HeroColorUtils.DEFAULT_HERO_COLOR)
             return
         }
 
-        heroColorCache[requestedImageUrl]?.let { cachedColor ->
+        val cacheKey = heroCacheKey(requestedImageUrl)
+        heroColorCache[cacheKey]?.let { cachedColor ->
             animateHeroBaseColorTo(cachedColor)
             return
         }
 
-        animateHeroBaseColorTo(DEFAULT_HERO_COLOR, 120L)
         heroColorJob = lifecycleScope.launch(Dispatchers.IO) {
             val bitmap = runCatching {
                 Glide.with(requireContext())
                     .asBitmap()
                     .load(requestedImageUrl)
-                    .submit(96, 96)
+                    .submit(160, 240)
                     .get()
             }.getOrNull()
 
-            val extractedColor = bitmap?.let { extractHeroColor(it) } ?: DEFAULT_HERO_COLOR
+            val extractedColor = bitmap?.let { HeroColorUtils.extractNormalizedHeroColor(it) }
+                ?: HeroColorUtils.DEFAULT_HERO_COLOR
 
             withContext(Dispatchers.Main) {
                 if (_binding == null || !isAdded || requestedImageUrl != lastHeroImageUrl) return@withContext
-                heroColorCache[requestedImageUrl] = extractedColor
+                heroColorCache[cacheKey] = extractedColor
                 animateHeroBaseColorTo(extractedColor)
             }
         }
@@ -296,20 +299,6 @@ class HomeMobileFragment : Fragment(), TopLevelTabFragment {
         binding.ivHomeBackground.background = gradient
     }
 
-    private fun extractHeroColor(bitmap: Bitmap): Int {
-        val sampleBitmap = bitmap.extractBottomHalf()
-        val palette = Palette.from(sampleBitmap)
-            .clearFilters()
-            .generate()
-
-        val dominantColor = palette.dominantSwatch?.rgb ?: calculateAverageColor(sampleBitmap)
-        if (sampleBitmap !== bitmap) {
-            sampleBitmap.recycle()
-        }
-
-        return normalizeHeroColor(dominantColor)
-    }
-
     private fun animateHeroBaseColorTo(targetColor: Int, durationMs: Long = 220L) {
         if (_binding == null || !isAdded) return
         heroColorAnimator?.cancel()
@@ -329,54 +318,7 @@ class HomeMobileFragment : Fragment(), TopLevelTabFragment {
         }
     }
 
-    private fun Bitmap.extractBottomHalf(): Bitmap {
-        if (width <= 0 || height <= 1) return this
-        val cropTop = height / 2
-        val cropHeight = (height - cropTop).coerceAtLeast(1)
-        return Bitmap.createBitmap(this, 0, cropTop, width, cropHeight)
-    }
-
-    private fun calculateAverageColor(bitmap: Bitmap): Int {
-        if (bitmap.width <= 0 || bitmap.height <= 0) return DEFAULT_HERO_COLOR
-
-        var red = 0L
-        var green = 0L
-        var blue = 0L
-        val totalPixels = bitmap.width * bitmap.height
-
-        for (x in 0 until bitmap.width) {
-            for (y in 0 until bitmap.height) {
-                val pixel = bitmap.getPixel(x, y)
-                red += Color.red(pixel)
-                green += Color.green(pixel)
-                blue += Color.blue(pixel)
-            }
-        }
-
-        return Color.rgb(
-            (red / totalPixels).toInt().coerceIn(0, 255),
-            (green / totalPixels).toInt().coerceIn(0, 255),
-            (blue / totalPixels).toInt().coerceIn(0, 255)
-        )
-    }
-
-    private fun normalizeHeroColor(color: Int): Int {
-        val hsl = FloatArray(3)
-        androidx.core.graphics.ColorUtils.colorToHSL(color, hsl)
-
-        hsl[1] = hsl[1].coerceIn(MIN_HERO_SATURATION, MAX_HERO_SATURATION)
-        hsl[2] = hsl[2].coerceIn(MIN_HERO_LIGHTNESS, MAX_HERO_LIGHTNESS)
-
-        return androidx.core.graphics.ColorUtils.HSLToColor(hsl)
-    }
-
     companion object {
-        private const val DEFAULT_HERO_COLOR_HEX = "#141414"
-        private val DEFAULT_HERO_COLOR: Int = Color.parseColor(DEFAULT_HERO_COLOR_HEX)
-        private const val MIN_HERO_SATURATION = 0.35f
-        private const val MAX_HERO_SATURATION = 0.50f
-        private const val MIN_HERO_LIGHTNESS = 0.15f
-        private const val MAX_HERO_LIGHTNESS = 0.22f
     }
 
     private fun displayHome(categories: List<Category>) {

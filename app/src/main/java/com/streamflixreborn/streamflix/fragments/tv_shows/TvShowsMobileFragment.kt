@@ -46,6 +46,8 @@ class TvShowsMobileFragment : Fragment(), TopLevelTabFragment {
     private var heroBaseColor: Int = HeroColorUtils.DEFAULT_HERO_COLOR
     private val heroColorCache = mutableMapOf<String, Int>()
 
+    private fun heroCacheKey(imageUrl: String): String = "${HeroColorUtils.CACHE_VERSION}|$imageUrl"
+
     private val database by lazy { AppDatabase.getInstance(requireContext()) }
     private val viewModel by viewModelsFactory { TvShowsViewModel(database) }
     private val appAdapter = AppAdapter()
@@ -235,18 +237,18 @@ class TvShowsMobileFragment : Fragment(), TopLevelTabFragment {
             return
         }
 
-        heroColorCache[requestedImageUrl]?.let { cachedColor ->
+        val cacheKey = heroCacheKey(requestedImageUrl)
+        heroColorCache[cacheKey]?.let { cachedColor ->
             animateHeroBaseColorTo(cachedColor)
             return
         }
 
-        animateHeroBaseColorTo(HeroColorUtils.DEFAULT_HERO_COLOR, 120L)
         heroColorJob = lifecycleScope.launch(Dispatchers.IO) {
             val bitmap = runCatching {
                 Glide.with(requireContext())
                     .asBitmap()
                     .load(requestedImageUrl)
-                    .submit(96, 96)
+                    .submit(160, 240)
                     .get()
             }.getOrNull()
 
@@ -255,7 +257,7 @@ class TvShowsMobileFragment : Fragment(), TopLevelTabFragment {
 
             withContext(Dispatchers.Main) {
                 if (_binding == null || !isAdded || requestedImageUrl != lastHeroImageUrl) return@withContext
-                heroColorCache[requestedImageUrl] = extractedColor
+                heroColorCache[cacheKey] = extractedColor
                 animateHeroBaseColorTo(extractedColor)
             }
         }
