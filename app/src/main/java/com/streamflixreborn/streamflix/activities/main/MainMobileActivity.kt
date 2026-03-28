@@ -156,6 +156,10 @@ class MainMobileActivity : FragmentActivity() {
             }
         }
 
+        if (savedInstanceState == null) {
+            viewModel.checkUpdate()
+        }
+
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 val handled = (getCurrentFragment() as? PlayerMobileFragment)?.onBackPressed() ?: false

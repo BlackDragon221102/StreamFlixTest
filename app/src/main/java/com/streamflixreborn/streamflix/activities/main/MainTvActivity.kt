@@ -147,6 +147,10 @@ class MainTvActivity : FragmentActivity() {
             }
         }
 
+        if (savedInstanceState == null) {
+            viewModel.checkUpdate()
+        }
+
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 when (navController.currentDestination?.id) {

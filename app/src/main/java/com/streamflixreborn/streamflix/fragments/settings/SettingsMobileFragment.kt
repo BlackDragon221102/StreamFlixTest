@@ -238,7 +238,7 @@ class SettingsMobileFragment : PreferenceFragmentCompat(), TopLevelTabFragment {
             startActivity(
                 Intent(
                     Intent.ACTION_VIEW,
-                    Uri.parse("https://github.com/streamflix-reborn/streamflix")
+                    Uri.parse("https://github.com/BlackDragon221102/StreamFlixTest")
                 )
             )
             true
