@@ -7,7 +7,7 @@
   <br />
   An open-source Android TV and mobile app for educational streaming interface, made with Android Studio, in Kotlin
   <br />
-  <a href="https://github.com/streamflix-reborn/streamflix/releases/latest">
+  <a href="https://github.com/BlackDragon221102/StreamFlixTest/releases/latest">
     <strong>Download app »</strong>
   </a>
   <br />
