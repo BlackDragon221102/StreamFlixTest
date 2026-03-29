@@ -171,6 +171,13 @@ class TvShowsMobileFragment : Fragment(), TopLevelTabFragment {
             setOnTouchListener { _, _ -> true }
         }
 
+        binding.headerContainer.apply {
+            isClickable = true
+            isFocusable = false
+            setOnClickListener { }
+            setOnTouchListener { _, _ -> true }
+        }
+
         binding.ivTvShowsBackground.visibility = View.VISIBLE
         binding.ivTvShowsBackground.setBackgroundColor(HeroColorUtils.DEFAULT_HERO_COLOR)
         binding.headerContainer.setBackgroundColor(Color.TRANSPARENT)

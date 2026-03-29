@@ -627,7 +627,19 @@ class AppAdapter(
     }
 
 
-    fun submitList(list: List<Item>) {
+    fun submitList(
+        list: List<Item>,
+        forceReplace: Boolean = false,
+        onCommitted: (() -> Unit)? = null,
+    ) {
+        if (forceReplace) {
+            items.clear()
+            items.addAll(list)
+            notifyDataSetChanged()
+            onCommitted?.invoke()
+            return
+        }
+
         val result = DiffUtil.calculateDiff(object : DiffUtil.Callback() {
             override fun getOldListSize() = items.size
 
@@ -675,6 +687,7 @@ class AppAdapter(
         items.clear()
         items.addAll(list)
         result.dispatchUpdatesTo(this)
+        onCommitted?.invoke()
     }
 
 

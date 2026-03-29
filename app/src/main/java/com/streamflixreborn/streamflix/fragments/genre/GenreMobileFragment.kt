@@ -1,16 +1,22 @@
 package com.streamflixreborn.streamflix.fragments.genre
 
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.text.TextPaint
+import android.util.TypedValue
 import android.view.LayoutInflater
-import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
-import android.widget.PopupMenu
+import android.widget.LinearLayout
+import android.widget.PopupWindow
+import android.widget.TextView
 import android.widget.Toast
+import android.view.animation.DecelerateInterpolator
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.doOnNextLayout
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.flowWithLifecycle
@@ -38,8 +44,21 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.ceil
+import kotlin.math.max
 
 class GenreMobileFragment : Fragment() {
+
+    private class GenreGridLayoutManager(
+        context: android.content.Context,
+        spanCount: Int,
+    ) : GridLayoutManager(context, spanCount) {
+        override fun supportsPredictiveItemAnimations(): Boolean = false
+    }
+
+    companion object {
+        private const val KEY_SORT_MODE = "genre_sort_mode"
+    }
 
     private var hasAutoCleared409: Boolean = false
 
@@ -50,22 +69,17 @@ class GenreMobileFragment : Fragment() {
     private val database by lazy { AppDatabase.getInstance(requireContext()) }
     private val viewModel by viewModelsFactory { GenreViewModel(args.id, database) }
 
-    private val appAdapter = AppAdapter()
+    private var appAdapter = AppAdapter()
     private var backgroundColorJob: Job? = null
     private var lastBackgroundPosterUrl: String? = null
     private var headerScrollOffsetPx: Int = 0
     private var genreBaseColor: Int = HeroColorUtils.DEFAULT_HERO_COLOR
     private var currentGenre: Genre? = null
     private var currentHasMore: Boolean = false
-    private var sortMode: SortMode = SortMode.DEFAULT
-
-    private enum class SortMode(val label: String) {
-        DEFAULT("Ordina"),
-        RECENT("Più recenti"),
-        RATING("Più votati"),
-        TITLE_ASC("A-Z"),
-        TITLE_DESC("Z-A")
-    }
+    private var sortPopupWindow: PopupWindow? = null
+    private var pendingScrollToTopAfterReload: Boolean = false
+    private var pendingInvisibleSortReload: Boolean = false
+    private var genreScrollListener: RecyclerView.OnScrollListener? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -78,6 +92,9 @@ class GenreMobileFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        savedInstanceState?.getString(KEY_SORT_MODE)
+            ?.let { savedMode -> GenreViewModel.SortMode.entries.find { it.name == savedMode } }
+            ?.let(viewModel::setSortMode)
 
         initializeGenre()
 
@@ -98,6 +115,12 @@ class GenreMobileFragment : Fragment() {
                         binding.isLoading.root.visibility = View.GONE
                     }
                     is GenreViewModel.State.FailedLoading -> {
+                        if (pendingInvisibleSortReload) {
+                            pendingInvisibleSortReload = false
+                            pendingScrollToTopAfterReload = false
+                            binding.rvGenre.visibility = View.VISIBLE
+                            binding.rvGenre.alpha = 1f
+                        }
                         val code = (state.error as? retrofit2.HttpException)?.code()
                         if (code == 409 && !hasAutoCleared409) {
                             hasAutoCleared409 = true
@@ -134,6 +157,8 @@ class GenreMobileFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        sortPopupWindow?.dismiss()
+        sortPopupWindow = null
         backgroundColorJob?.cancel()
         _binding = null
     }
@@ -159,30 +184,23 @@ class GenreMobileFragment : Fragment() {
         }
 
         binding.rvGenre.apply {
-            layoutManager = GridLayoutManager(context, 3).also {
-                it.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
-                    override fun getSpanSize(position: Int): Int {
-                        val viewType = appAdapter.getItemViewType(position)
-                        return when (AppAdapter.Type.entries[viewType]) {
-                            AppAdapter.Type.HEADER -> it.spanCount
-                            else -> 1
-                        }
-                    }
-                }
-            }
-            adapter = appAdapter.apply {
-                stateRestorationPolicy = RecyclerView.Adapter.StateRestorationPolicy.PREVENT_WHEN_EMPTY
-            }
+            appAdapter = createGenreAdapter()
+            layoutManager = createGenreLayoutManager()
+            itemAnimator = null
+            preserveFocusAfterLayout = false
+            isSaveEnabled = false
+            adapter = appAdapter
             addItemDecoration(
                 SpacingItemDecoration(10.dp(requireContext()))
             )
-            addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            genreScrollListener = object : RecyclerView.OnScrollListener() {
                 override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                     headerScrollOffsetPx = (headerScrollOffsetPx + dy).coerceAtLeast(0)
                     updateHeaderBackgroundByScroll()
                     applyGenreBackgroundByScroll()
                 }
-            })
+            }
+            addOnScrollListener(genreScrollListener!!)
         }
 
         binding.ivProviderLogo.apply {
@@ -192,6 +210,13 @@ class GenreMobileFragment : Fragment() {
                 .error(R.drawable.ic_provider_default_logo)
                 .fitCenter()
                 .into(this)
+            isClickable = true
+            isFocusable = false
+            setOnClickListener { }
+            setOnTouchListener { _, _ -> true }
+        }
+
+        binding.headerContainer.apply {
             isClickable = true
             isFocusable = false
             setOnClickListener { }
@@ -247,6 +272,11 @@ class GenreMobileFragment : Fragment() {
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString(KEY_SORT_MODE, viewModel.sortMode.value.name)
+    }
+
     private fun sectionLabel(): String = when {
         args.id.equals("Tutti i Film", ignoreCase = true) -> "Film"
         args.id.equals("Tutte le Serie TV", ignoreCase = true) -> "Serie TV"
@@ -272,17 +302,35 @@ class GenreMobileFragment : Fragment() {
             },
             bind = { binding ->
                 binding.tvGenreName.text = genre.name.takeIf { it.isNotEmpty() } ?: args.name
-                binding.tvGenreSort.text = sortMode.label
-                binding.tvGenreSort.setOnClickListener { showSortMenu(binding.tvGenreSort) }
+                binding.tvGenreSort.text = viewModel.sortMode.value.label
+                binding.tvGenreSort.background = createSortButtonBackground()
+                binding.tvGenreSort.setOnClickListener {
+                    animateTapFeedback(binding.tvGenreSort) {
+                        showSortMenu(binding.tvGenreSort)
+                    }
+                }
             }
         )
 
-        appAdapter.submitList(sortShows(genre.shows).onEach {
-            when (it) {
-                is Movie -> it.itemType = AppAdapter.Type.MOVIE_GENRE_MOBILE_ITEM
-                is TvShow -> it.itemType = AppAdapter.Type.TV_SHOW_GENRE_MOBILE_ITEM
+        val forceReplace = pendingScrollToTopAfterReload
+        if (forceReplace) {
+            hardResetGenreRecyclerForSort()
+        }
+
+        appAdapter.submitList(
+            genre.shows.onEach {
+                when (it) {
+                    is Movie -> it.itemType = AppAdapter.Type.MOVIE_GENRE_MOBILE_ITEM
+                    is TvShow -> it.itemType = AppAdapter.Type.TV_SHOW_GENRE_MOBILE_ITEM
+                }
+            },
+            forceReplace = forceReplace
+        ) {
+            if (pendingScrollToTopAfterReload) {
+                pendingScrollToTopAfterReload = false
+                finalizeSortReloadAtTop()
             }
-        })
+        }
 
         if (hasMore) {
             appAdapter.setOnLoadMoreListener { viewModel.loadMoreGenreShows() }
@@ -292,46 +340,335 @@ class GenreMobileFragment : Fragment() {
     }
 
     private fun showSortMenu(anchor: View) {
-        PopupMenu(requireContext(), anchor).apply {
-            menu.add(0, SortMode.DEFAULT.ordinal, 0, SortMode.DEFAULT.label)
-            menu.add(0, SortMode.RECENT.ordinal, 1, SortMode.RECENT.label)
-            menu.add(0, SortMode.RATING.ordinal, 2, SortMode.RATING.label)
-            menu.add(0, SortMode.TITLE_ASC.ordinal, 3, SortMode.TITLE_ASC.label)
-            menu.add(0, SortMode.TITLE_DESC.ordinal, 4, SortMode.TITLE_DESC.label)
-            setOnMenuItemClickListener(::onSortMenuItemSelected)
-            show()
+        sortPopupWindow?.dismiss()
+
+        val popupContent = layoutInflater.inflate(R.layout.popup_genre_sort_mobile, null)
+        popupContent.background = createSortPopupBackground()
+        val optionsContainer = popupContent.findViewById<LinearLayout>(R.id.layout_sort_popup)
+        val selectionHighlight = popupContent.findViewById<View>(R.id.view_sort_selection_highlight)
+        selectionHighlight.background = createSortSelectionBackground()
+        val currentSortMode = viewModel.sortMode.value
+        val popupWidth = measureSortPopupWidth()
+        var selectedOptionView: View? = null
+
+        GenreViewModel.SortMode.entries.forEach { mode ->
+            val optionView = layoutInflater.inflate(
+                R.layout.item_genre_sort_option_mobile,
+                optionsContainer,
+                false
+            )
+            val labelView = optionView.findViewById<TextView>(R.id.tv_sort_option_label)
+            val isSelected = currentSortMode == mode
+
+            labelView.text = mode.label
+            labelView.alpha = if (isSelected) 1f else 0.82f
+            labelView.setTextColor(
+                if (isSelected) Color.WHITE else Color.parseColor("#E3E3E5")
+            )
+            optionView.background =
+                requireContext().getDrawable(R.drawable.bg_genre_sort_option_default_mobile)
+            optionView.isClickable = true
+            optionView.isFocusable = true
+            labelView.isClickable = false
+            if (isSelected) {
+                selectedOptionView = optionView
+            }
+            optionView.setOnClickListener {
+                animateSortOptionSelection(selectionHighlight, optionView, labelView) {
+                    onSortModeSelected(mode)
+                    sortPopupWindow?.dismiss()
+                }
+            }
+            optionsContainer.addView(optionView)
+        }
+
+        sortPopupWindow = PopupWindow(
+            popupContent,
+            popupWidth,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            true
+        ).apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            elevation = 18f
+            isOutsideTouchable = true
+            isTouchable = true
+        }
+
+        sortPopupWindow?.showAsDropDown(anchor, 0, 10.dp(requireContext()))
+        popupContent.post {
+            selectedOptionView?.let { optionView ->
+                placeSelectionHighlight(selectionHighlight, optionView, animate = false)
+            }
+        }
+        popupContent.alpha = 0f
+        popupContent.translationY = (-8).dp(requireContext()).toFloat()
+        popupContent.scaleX = 0.985f
+        popupContent.scaleY = 0.985f
+        popupContent.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(220L)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
+    }
+
+    private fun animateTapFeedback(view: View, onEnd: () -> Unit) {
+        view.animate().cancel()
+        view.animate()
+            .scaleX(0.97f)
+            .scaleY(0.97f)
+            .alpha(0.92f)
+            .setDuration(70L)
+            .withEndAction {
+                view.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .alpha(1f)
+                    .setDuration(150L)
+                    .setInterpolator(DecelerateInterpolator())
+                    .withEndAction(onEnd)
+                    .start()
+            }
+            .start()
+    }
+
+    private fun animateSortOptionSelection(
+        selectionHighlight: View,
+        optionView: View,
+        labelView: TextView,
+        onEnd: () -> Unit,
+    ) {
+        placeSelectionHighlight(selectionHighlight, optionView, animate = false)
+        selectionHighlight.alpha = 0f
+        selectionHighlight.animate().cancel()
+        selectionHighlight.animate()
+            .alpha(1f)
+            .setDuration(170L)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
+
+        labelView.animate().cancel()
+        labelView.animate()
+            .alpha(1f)
+            .setDuration(180L)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
+        labelView.setTextColor(Color.WHITE)
+
+        optionView.postDelayed(onEnd, 190L)
+    }
+
+    private fun placeSelectionHighlight(
+        highlightView: View,
+        targetView: View,
+        animate: Boolean,
+    ) {
+        val targetTop = targetView.top.toFloat()
+        val targetHeight = targetView.height.takeIf { it > 0 } ?: return
+
+        highlightView.visibility = View.VISIBLE
+        highlightView.pivotY = 0f
+        highlightView.pivotX = (highlightView.width / 2f).takeIf { it > 0f } ?: 0f
+
+        if (!animate || highlightView.alpha == 0f) {
+            highlightView.animate().cancel()
+            highlightView.translationY = targetTop
+            highlightView.layoutParams = highlightView.layoutParams.apply {
+                height = targetHeight
+            }
+            highlightView.alpha = 1f
+            highlightView.scaleY = 1f
+            highlightView.requestLayout()
+            return
+        }
+
+        val startHeight = highlightView.height.takeIf { it > 0 } ?: targetHeight
+        val endScaleY = targetHeight.toFloat() / startHeight.toFloat()
+        highlightView.animate().cancel()
+        highlightView.alpha = 0.94f
+        highlightView.animate()
+            .translationY(targetTop)
+            .scaleY(endScaleY)
+            .alpha(1f)
+            .setDuration(185L)
+            .setInterpolator(DecelerateInterpolator(1.15f))
+            .withEndAction {
+                highlightView.scaleY = 1f
+                highlightView.layoutParams = highlightView.layoutParams.apply {
+                    height = targetHeight
+                }
+                highlightView.requestLayout()
+            }
+            .start()
+    }
+
+    private fun measureSortPopupWidth(): Int {
+        val textPaint = TextPaint().apply {
+            isAntiAlias = true
+            textSize = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_SP,
+                15f,
+                resources.displayMetrics
+            )
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }
+
+        val widestLabel = GenreViewModel.SortMode.entries.maxOf { mode ->
+            ceil(textPaint.measureText(mode.label).toDouble()).toInt()
+        }
+
+        val horizontalPadding =
+            10.dp(requireContext()) * 2 + 16.dp(requireContext()) * 2
+        val breathingRoom = 8.dp(requireContext())
+        val minWidth = 196.dp(requireContext())
+
+        return max(minWidth, widestLabel + horizontalPadding + breathingRoom)
+    }
+
+    private fun createSortButtonBackground(): GradientDrawable {
+        val baseSurface = androidx.core.graphics.ColorUtils.blendARGB(genreBaseColor, Color.BLACK, 0.76f)
+        val buttonColor = androidx.core.graphics.ColorUtils.blendARGB(baseSurface, Color.WHITE, 0.05f)
+        val strokeColor = androidx.core.graphics.ColorUtils.setAlphaComponent(Color.WHITE, 0x22)
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 16.dp(requireContext()).toFloat()
+            setColor(buttonColor)
+            setStroke(1.dp(requireContext()), strokeColor)
         }
     }
 
-    private fun onSortMenuItemSelected(item: MenuItem): Boolean {
-        val selectedMode = SortMode.entries.getOrNull(item.itemId) ?: return false
-        if (sortMode == selectedMode) return true
-        sortMode = selectedMode
-        currentGenre?.let { displayGenre(it, currentHasMore) }
-        return true
+    private fun createSortPopupBackground(): GradientDrawable {
+        val baseSurface = androidx.core.graphics.ColorUtils.blendARGB(genreBaseColor, Color.BLACK, 0.80f)
+        val popupColor = androidx.core.graphics.ColorUtils.blendARGB(baseSurface, Color.WHITE, 0.025f)
+        val strokeColor = androidx.core.graphics.ColorUtils.setAlphaComponent(Color.WHITE, 0x18)
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 18.dp(requireContext()).toFloat()
+            setColor(popupColor)
+            setStroke(1.dp(requireContext()), strokeColor)
+        }
     }
 
-    private fun sortShows(shows: List<Show>): List<Show> = when (sortMode) {
-        SortMode.DEFAULT -> shows
-        SortMode.RECENT -> shows.sortedByDescending { showReleasedTime(it) }
-        SortMode.RATING -> shows.sortedByDescending { showRating(it) }
-        SortMode.TITLE_ASC -> shows.sortedBy { showTitle(it).lowercase() }
-        SortMode.TITLE_DESC -> shows.sortedByDescending { showTitle(it).lowercase() }
+    private fun createSortSelectionBackground(): GradientDrawable {
+        val baseSurface = androidx.core.graphics.ColorUtils.blendARGB(genreBaseColor, Color.BLACK, 0.70f)
+        val selectionColor = androidx.core.graphics.ColorUtils.blendARGB(baseSurface, Color.WHITE, 0.08f)
+        val strokeColor = androidx.core.graphics.ColorUtils.setAlphaComponent(Color.WHITE, 0x20)
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 12.dp(requireContext()).toFloat()
+            setColor(selectionColor)
+            setStroke(1.dp(requireContext()), strokeColor)
+        }
     }
 
-    private fun showTitle(show: Show): String = when (show) {
-        is Movie -> show.title
-        is TvShow -> show.title
+    private fun refreshSortUiSurfaces() {
+        binding.rvGenre.findViewById<TextView?>(R.id.tv_genre_sort)?.background = createSortButtonBackground()
+        sortPopupWindow?.contentView?.background = createSortPopupBackground()
+        sortPopupWindow?.contentView
+            ?.findViewById<View?>(R.id.view_sort_selection_highlight)
+            ?.background = createSortSelectionBackground()
     }
 
-    private fun showRating(show: Show): Double = when (show) {
-        is Movie -> show.rating ?: 0.0
-        is TvShow -> show.rating ?: 0.0
+    private fun onSortModeSelected(selectedMode: GenreViewModel.SortMode) {
+        if (viewModel.sortMode.value == selectedMode) return
+        pendingScrollToTopAfterReload = true
+        pendingInvisibleSortReload = true
+        currentGenre = null
+        currentHasMore = false
+        binding.isLoading.root.visibility = View.VISIBLE
+        binding.isLoading.pbIsLoading.visibility = View.VISIBLE
+        binding.isLoading.gIsLoadingRetry.visibility = View.GONE
+        binding.rvGenre.stopScroll()
+        binding.rvGenre.alpha = 1f
+        binding.rvGenre.visibility = View.INVISIBLE
+        hardResetGenreRecyclerForSort()
+        appAdapter.submitList(emptyList(), forceReplace = true)
+        viewModel.setSortMode(selectedMode)
     }
 
-    private fun showReleasedTime(show: Show): Long = when (show) {
-        is Movie -> show.released?.timeInMillis ?: 0L
-        is TvShow -> show.released?.timeInMillis ?: 0L
+    private fun createGenreLayoutManager(): GridLayoutManager =
+        GenreGridLayoutManager(requireContext(), 3).also { layoutManager ->
+            layoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
+                override fun getSpanSize(position: Int): Int {
+                    val viewType = appAdapter.getItemViewType(position)
+                    return when (AppAdapter.Type.entries[viewType]) {
+                        AppAdapter.Type.HEADER -> layoutManager.spanCount
+                        else -> 1
+                    }
+                }
+            }
+        }
+
+    private fun createGenreAdapter(): AppAdapter =
+        AppAdapter().apply {
+            stateRestorationPolicy = RecyclerView.Adapter.StateRestorationPolicy.PREVENT_WHEN_EMPTY
+        }
+
+    private fun hardResetGenreRecyclerForSort() {
+        binding.rvGenre.stopScroll()
+        headerScrollOffsetPx = 0
+        updateHeaderBackgroundByScroll()
+        applyGenreBackgroundByScroll()
+
+        genreScrollListener?.let { binding.rvGenre.removeOnScrollListener(it) }
+        genreScrollListener = null
+        binding.rvGenre.adapter = null
+        binding.rvGenre.layoutManager = null
+        binding.rvGenre.recycledViewPool.clear()
+        binding.rvGenre.clearOnScrollListeners()
+        binding.rvGenre.scrollTo(0, 0)
+
+        appAdapter = createGenreAdapter()
+        binding.rvGenre.adapter = appAdapter
+        binding.rvGenre.layoutManager = createGenreLayoutManager()
+        genreScrollListener = object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                headerScrollOffsetPx = (headerScrollOffsetPx + dy).coerceAtLeast(0)
+                updateHeaderBackgroundByScroll()
+                applyGenreBackgroundByScroll()
+            }
+        }
+        binding.rvGenre.addOnScrollListener(genreScrollListener!!)
+        (binding.rvGenre.layoutManager as? GridLayoutManager)?.scrollToPositionWithOffset(0, 0)
+        binding.rvGenre.scrollToPosition(0)
+    }
+
+    private fun finalizeSortReloadAtTop() {
+        scrollGenreToTop()
+        binding.rvGenre.doOnNextLayout {
+            scrollGenreToTop()
+            if (pendingInvisibleSortReload) {
+                pendingInvisibleSortReload = false
+                binding.rvGenre.visibility = View.VISIBLE
+                binding.rvGenre.alpha = 1f
+            }
+        }
+    }
+
+    private fun scrollGenreToTop() {
+        binding.rvGenre.stopScroll()
+        headerScrollOffsetPx = 0
+        updateHeaderBackgroundByScroll()
+        applyGenreBackgroundByScroll()
+        (binding.rvGenre.layoutManager as? GridLayoutManager)?.scrollToPositionWithOffset(0, 0)
+        binding.rvGenre.post {
+            binding.rvGenre.stopScroll()
+            headerScrollOffsetPx = 0
+            updateHeaderBackgroundByScroll()
+            applyGenreBackgroundByScroll()
+            (binding.rvGenre.layoutManager as? GridLayoutManager)?.scrollToPositionWithOffset(0, 0)
+            binding.rvGenre.scrollToPosition(0)
+        }
+        binding.rvGenre.doOnNextLayout {
+            binding.rvGenre.stopScroll()
+            headerScrollOffsetPx = 0
+            updateHeaderBackgroundByScroll()
+            applyGenreBackgroundByScroll()
+            (binding.rvGenre.layoutManager as? GridLayoutManager)?.scrollToPositionWithOffset(0, 0)
+            binding.rvGenre.scrollToPosition(0)
+        }
     }
 
     private fun updateGenreBackgroundFromFirstPoster(show: Show?) {
@@ -367,6 +704,7 @@ class GenreMobileFragment : Fragment() {
                 if (_binding == null || !isAdded || posterUrl != lastBackgroundPosterUrl) return@withContext
                 genreBaseColor = extractedColor
                 applyGenreBackgroundByScroll()
+                refreshSortUiSurfaces()
             }
         }
     }

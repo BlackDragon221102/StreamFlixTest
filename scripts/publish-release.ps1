@@ -4,7 +4,9 @@ param(
 
     [string]$CommitMessage = "",
 
-    [string]$Branch = "main"
+    [string]$Branch = "main",
+
+    [string]$ReleaseNotesFile = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -109,6 +111,14 @@ if (-not ($Version -match "^v\d+(\.\d+)*$")) {
     Fail "La versione deve avere formato tipo v1.7.104"
 }
 
+if ([string]::IsNullOrWhiteSpace($ReleaseNotesFile)) {
+    $ReleaseNotesFile = "release-notes/$Version.md"
+}
+
+if (-not (Test-Path $ReleaseNotesFile)) {
+    Fail "Manca il changelog release: $ReleaseNotesFile"
+}
+
 $currentBranch = (git branch --show-current).Trim()
 if ($currentBranch -ne $Branch) {
     Fail "Sei sul branch '$currentBranch'. Passa a '$Branch' prima di pubblicare."
@@ -151,6 +161,7 @@ Write-Host " - Tag: $Version"
 Write-Host " - versionCode: $($versioningInfo.CurrentVersionCode) -> $($versioningInfo.NextVersionCode)"
 Write-Host " - versionName: $($versioningInfo.CurrentVersionName) -> $($versioningInfo.NextVersionName)"
 Write-Host " - Commit message: $CommitMessage"
+Write-Host " - Changelog: $ReleaseNotesFile"
 Write-Host ""
 
 $confirmation = Read-Host "Confermi push e creazione release? (s/N)"

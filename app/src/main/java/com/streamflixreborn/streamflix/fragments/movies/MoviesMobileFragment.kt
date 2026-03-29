@@ -184,6 +184,13 @@ class MoviesMobileFragment : Fragment(), TopLevelTabFragment {
             setOnTouchListener { _, _ -> true }
         }
 
+        binding.headerContainer.apply {
+            isClickable = true
+            isFocusable = false
+            setOnClickListener { }
+            setOnTouchListener { _, _ -> true }
+        }
+
         binding.ivMoviesBackground.visibility = View.VISIBLE
         binding.ivMoviesBackground.setBackgroundColor(HeroColorUtils.DEFAULT_HERO_COLOR)
         binding.headerContainer.setBackgroundColor(Color.TRANSPARENT)

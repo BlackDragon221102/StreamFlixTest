@@ -601,7 +601,10 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
     }
 
     // NIENTE PIÙ ORDINAMENTO ALFABETICO FAKE: I risultati arrivano puliti dal server e sono ordinati per ultimi usciti
-    override suspend fun getGenre(id: String, page: Int): Genre {
+    override suspend fun getGenre(id: String, page: Int): Genre =
+        getGenre(id = id, page = page, sort = "release_date")
+
+    suspend fun getGenre(id: String, page: Int, sort: String?): Genre {
         val offset = (page - 1) * 60
         var actualType: String? = null
         var actualGenreId: String? = null
@@ -634,7 +637,15 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
 
         val shows = try {
             if (page == 1) {
-                val json = InertiaUtils.parseInertiaData(withSslFallback { it.getArchiveHtml(genreId = actualGenreId, type = actualType) })
+                val json = InertiaUtils.parseInertiaData(
+                    withSslFallback {
+                        it.getArchiveHtml(
+                            genreId = actualGenreId,
+                            type = actualType,
+                            sort = sort
+                        )
+                    }
+                )
                 val props = json.optJSONObject("props")
                 if (props != null) {
                     val total = props.optInt("totalCount", 0)
@@ -642,7 +653,15 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
                 }
                 getTitlesFromInertiaJson(json)
             } else {
-                withSslFallback { it.getArchiveApi(lang = language, offset = offset, genreId = actualGenreId, type = actualType) }.titles
+                withSslFallback {
+                    it.getArchiveApi(
+                        lang = language,
+                        offset = offset,
+                        genreId = actualGenreId,
+                        type = actualType,
+                        sort = sort
+                    )
+                }.titles
             }
         } catch (e: Exception) { listOf() }
 
@@ -801,8 +820,8 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
         @GET("archive?type=movie") suspend fun getMoviesHtml(): Document
         @GET("archive?type=tv") suspend fun getTvShowsHtml(): Document
         @GET("/api/search") suspend fun search(@Query("q", encoded = true) keyword: String, @Query("offset") offset: Int = 0, @Query("lang") language: String): SearchRes
-        @GET("/api/archive") suspend fun getArchiveApi(@Query("lang") lang: String, @Query("offset") offset: Int, @Query("genre[]") genreId: String? = null, @Query("type") type: String? = null): ApiArchiveRes
-        @GET("archive") suspend fun getArchiveHtml(@Query("genre[]") genreId: String? = null, @Query("type") type: String? = null): Document
+        @GET("/api/archive") suspend fun getArchiveApi(@Query("lang") lang: String, @Query("offset") offset: Int, @Query("genre[]") genreId: String? = null, @Query("type") type: String? = null, @Query("sort") sort: String? = null): ApiArchiveRes
+        @GET("archive") suspend fun getArchiveHtml(@Query("genre[]") genreId: String? = null, @Query("type") type: String? = null, @Query("sort") sort: String? = null): Document
         @GET("titles/{id}") suspend fun getDetails(@Path("id") id: String, @Header("x-inertia") xInertia: String = "true", @Header("x-inertia-version") version: String, @Query("lang") language: String, @Header("X-Requested-With") xRequestedWith: String = "XMLHttpRequest"): HomeRes
         @GET("titles/{id}/") suspend fun getSeasonDetails(@Path("id") id: String, @Header("x-inertia") xInertia: String = "true", @Header("x-inertia-version") version: String, @Query("lang") language: String, @Header("X-Requested-With") xRequestedWith: String = "XMLHttpRequest"): SeasonRes
 

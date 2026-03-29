@@ -7,33 +7,46 @@ import com.streamflixreborn.streamflix.database.AppDatabase
 import com.streamflixreborn.streamflix.models.Genre
 import com.streamflixreborn.streamflix.models.Movie
 import com.streamflixreborn.streamflix.models.TvShow
+import com.streamflixreborn.streamflix.providers.StreamingCommunityProvider
 import com.streamflixreborn.streamflix.utils.UserPreferences
 import com.streamflixreborn.streamflix.utils.ProviderChangeNotifier
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
-
 class GenreViewModel(private val id: String, database: AppDatabase) : ViewModel() {
 
-    private val _state = MutableStateFlow<State>(State.Loading)
+    enum class SortMode(val label: String, val apiValue: String) {
+        RELEASE_DATE("Data di uscita", "release_date"),
+        UPDATED_DATE("Data di aggiornamento", "updated_at"),
+        ADDED_DATE("Data di aggiunta", "created_at"),
+        RATING("Valutazione", "score"),
+        VIEWS("Views", "views"),
+        NAME("Nome", "name")
+    }
+
+    private val _sourceState = MutableStateFlow<State>(State.Loading)
+    private val _sortMode = MutableStateFlow(SortMode.RELEASE_DATE)
+    val sortMode: StateFlow<SortMode> = _sortMode.asStateFlow()
     
     init {
-        // Listen for provider changes and reload data
         viewModelScope.launch {
             ProviderChangeNotifier.providerChangeFlow.collect {
                 getGenre(id)
             }
         }
     }
+
     @OptIn(ExperimentalCoroutinesApi::class)
     val state: Flow<State> = combine(
-        _state,
-        _state.transformLatest { state ->
+        _sourceState,
+        _sourceState.transformLatest { state ->
             when (state) {
                 is State.SuccessLoading -> {
                     val movies = state.genre.shows
@@ -44,7 +57,7 @@ class GenreViewModel(private val id: String, database: AppDatabase) : ViewModel(
                 else -> emit(emptyList<Movie>())
             }
         },
-        _state.transformLatest { state ->
+        _sourceState.transformLatest { state ->
             when (state) {
                 is State.SuccessLoading -> {
                     val tvShows = state.genre.shows
@@ -58,19 +71,19 @@ class GenreViewModel(private val id: String, database: AppDatabase) : ViewModel(
     ) { state, moviesDb, tvShowsDb ->
         when (state) {
             is State.SuccessLoading -> {
+                val mergedShows = state.genre.shows.map { item ->
+                    when (item) {
+                        is Movie -> moviesDb.find { it.id == item.id }
+                            ?.let { mergeMovieForList(item, it) }
+                            ?: item
+                        is TvShow -> tvShowsDb.find { it.id == item.id }
+                            ?.let { mergeTvShowForList(item, it) }
+                            ?: item
+                    }
+                }
+
                 State.SuccessLoading(
-                    genre = state.genre.copy(
-                        shows = state.genre.shows.map { item ->
-                            when (item) {
-                                is Movie -> moviesDb.find { it.id == item.id }
-                                    ?.let { mergeMovieForList(item, it) }
-                                    ?: item
-                                is TvShow -> tvShowsDb.find { it.id == item.id }
-                                    ?.let { mergeTvShowForList(item, it) }
-                                    ?: item
-                            }
-                        }
-                    ),
+                    genre = state.genre.copy(shows = mergedShows),
                     hasMore = state.hasMore
                 )
             }
@@ -91,33 +104,38 @@ class GenreViewModel(private val id: String, database: AppDatabase) : ViewModel(
         getGenre(id)
     }
 
+    fun setSortMode(mode: SortMode) {
+        if (_sortMode.value == mode) return
+        _sortMode.value = mode
+        getGenre(id)
+    }
 
     fun getGenre(id: String) = viewModelScope.launch(Dispatchers.IO) {
-        _state.emit(State.Loading)
+        _sourceState.emit(State.Loading)
 
         try {
-            val genre = UserPreferences.currentProvider!!.getGenre(id)
+            val genre = loadGenre(id, page = 1)
 
             page = 1
 
-            _state.emit(State.SuccessLoading(genre, true))
+            _sourceState.emit(State.SuccessLoading(genre, true))
         } catch (e: Exception) {
             Log.e("GenreViewModel", "getGenre: ", e)
-            _state.emit(State.FailedLoading(e))
+            _sourceState.emit(State.FailedLoading(e))
         }
     }
 
     fun loadMoreGenreShows() = viewModelScope.launch(Dispatchers.IO) {
-        val currentState = _state.first()
+        val currentState = _sourceState.first()
         if (currentState is State.SuccessLoading) {
-            _state.emit(State.LoadingMore)
+            _sourceState.emit(State.LoadingMore)
 
             try {
-                val genre = UserPreferences.currentProvider!!.getGenre(id, page + 1)
+                val genre = loadGenre(id, page = page + 1)
 
                 page += 1
 
-                _state.emit(
+                _sourceState.emit(
                     State.SuccessLoading(
                         genre = Genre(
                             id = genre.id,
@@ -130,8 +148,19 @@ class GenreViewModel(private val id: String, database: AppDatabase) : ViewModel(
                 )
             } catch (e: Exception) {
                 Log.e("GenreViewModel", "loadMoreGenreShows: ", e)
-                _state.emit(State.FailedLoading(e))
+                _sourceState.emit(State.FailedLoading(e))
             }
+        }
+    }
+
+    private suspend fun loadGenre(id: String, page: Int): Genre {
+        val provider = UserPreferences.currentProvider
+            ?: error("Provider non disponibile")
+
+        return if (provider is StreamingCommunityProvider) {
+            provider.getGenre(id, page, _sortMode.value.apiValue)
+        } else {
+            provider.getGenre(id, page)
         }
     }
 

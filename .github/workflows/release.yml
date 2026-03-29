@@ -68,6 +68,20 @@ jobs:
         # Rinomina il primo APK generato in release con il nome versione desiderato
         run: mv "${{ steps.find_apk.outputs.apk_path }}" "app/build/outputs/apk/release/StreamFlix-${{ github.ref_name }}.apk"
 
+      - name: Carica changelog release
+        id: release_notes
+        run: |
+          NOTES_FILE="release-notes/${{ github.ref_name }}.md"
+          if [ ! -f "$NOTES_FILE" ]; then
+            echo "File changelog mancante: $NOTES_FILE"
+            exit 1
+          fi
+          {
+            echo 'body<<EOF'
+            cat "$NOTES_FILE"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Crea Release e Carica APK
         uses: softprops/action-gh-release@v2
         with:
@@ -75,11 +89,6 @@ jobs:
           files: app/build/outputs/apk/release/StreamFlix-${{ github.ref_name }}.apk
           tag_name: ${{ github.ref_name }}
           name: Streamflix Release ${{ github.ref_name }}
-          body: |
-            Nuovo aggiornamento di Streamflix.
-
-            APK allegato:
-            - StreamFlix-${{ github.ref_name }}.apk
-          generate_release_notes: true
+          body: ${{ steps.release_notes.outputs.body }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
