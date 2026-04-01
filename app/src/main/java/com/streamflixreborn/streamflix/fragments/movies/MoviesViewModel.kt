@@ -7,6 +7,7 @@ import com.streamflixreborn.streamflix.database.AppDatabase
 import com.streamflixreborn.streamflix.models.Category
 import com.streamflixreborn.streamflix.models.Genre
 import com.streamflixreborn.streamflix.models.Movie
+import com.streamflixreborn.streamflix.utils.CatalogRefreshUtils
 import com.streamflixreborn.streamflix.utils.CatalogSeedUtils
 import com.streamflixreborn.streamflix.utils.PrefetchUtils
 import com.streamflixreborn.streamflix.utils.ProviderChangeNotifier
@@ -22,8 +23,9 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class MoviesViewModel(private val database: AppDatabase) : ViewModel() {
-    private val diskCacheKey = "mobile_movies_categories_v2"
+    private val diskCacheKey = CatalogRefreshUtils.MOVIES_CACHE_KEY
 
     private val _state = MutableStateFlow<State>(State.Loading)
     val state: Flow<State> = combine(
@@ -90,10 +92,13 @@ class MoviesViewModel(private val database: AppDatabase) : ViewModel() {
                 loadNetflixStyleCategories(forceRefresh = true)
             }
         }
-        loadNetflixStyleCategories()
+        loadNetflixStyleCategories(silentRefresh = true)
     }
 
-    fun loadNetflixStyleCategories(forceRefresh: Boolean = false) = viewModelScope.launch(Dispatchers.IO) {
+    fun loadNetflixStyleCategories(
+        forceRefresh: Boolean = false,
+        silentRefresh: Boolean = false,
+    ) = viewModelScope.launch(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         var cachedLoadedAt: Long? = null
         var cached = synchronized(cache) { cache[cacheKey] }
@@ -113,6 +118,8 @@ class MoviesViewModel(private val database: AppDatabase) : ViewModel() {
                 }
             }
         }
+
+        val canUseSilentRefresh = silentRefresh && cached != null
 
         if (!forceRefresh && cached != null) {
             _state.emit(State.SuccessLoading(cached))
@@ -152,7 +159,9 @@ class MoviesViewModel(private val database: AppDatabase) : ViewModel() {
             baseCategories.add(Category("I più votati", moviePool.sortedByDescending { movie: Movie -> movie.rating ?: 0.0 }.drop(10).take(30)))
             baseCategories.add(Category("Da non perdere", moviePool.shuffled().take(30)))
 
-            _state.emit(State.SuccessLoading(baseCategories))
+            if (!canUseSilentRefresh) {
+                _state.emit(State.SuccessLoading(baseCategories))
+            }
 
             val genresCategory = runCatching {
                 val allGenres = provider.search("", 1).filterIsInstance<Genre>()
@@ -197,7 +206,7 @@ class MoviesViewModel(private val database: AppDatabase) : ViewModel() {
             }
             UiCacheStore.saveCategories(diskCacheKey, finalCategories)
 
-            if (genresCategory != null) {
+            if (genresCategory != null && !canUseSilentRefresh) {
                 _state.emit(State.SuccessLoading(finalCategories))
             }
             viewModelScope.launch(Dispatchers.IO) {

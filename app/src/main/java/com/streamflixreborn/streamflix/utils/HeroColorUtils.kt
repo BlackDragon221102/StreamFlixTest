@@ -6,13 +6,15 @@ import androidx.core.graphics.ColorUtils
 import androidx.palette.graphics.Palette
 
 object HeroColorUtils {
-    const val CACHE_VERSION: Int = 3
+    const val CACHE_VERSION: Int = 4
     val DEFAULT_HERO_COLOR: Int = Color.parseColor("#141414")
 
     private const val MIN_HERO_SATURATION = 0.42f
     private const val MAX_HERO_SATURATION = 0.62f
     private const val MIN_HERO_LIGHTNESS = 0.18f
     private const val MAX_HERO_LIGHTNESS = 0.26f
+    private const val MAX_SAMPLE_WIDTH = 64
+    private const val MAX_SAMPLE_HEIGHT = 40
 
     fun extractNormalizedHeroColor(bitmap: Bitmap): Int {
         val sampleBitmap = bitmap.extractBackdropArea()
@@ -43,24 +45,31 @@ object HeroColorUtils {
         if (width <= 0 || height <= 1) return this
         val cropHeight = (height * 0.50f).toInt().coerceIn(1, height)
         val cropTop = 0
-        return Bitmap.createBitmap(this, 0, cropTop, width, cropHeight)
+        val cropped = Bitmap.createBitmap(this, 0, cropTop, width, cropHeight)
+        val targetWidth = cropped.width.coerceAtMost(MAX_SAMPLE_WIDTH)
+        val targetHeight = cropped.height.coerceAtMost(MAX_SAMPLE_HEIGHT)
+        if (cropped.width == targetWidth && cropped.height == targetHeight) return cropped
+
+        val scaled = Bitmap.createScaledBitmap(cropped, targetWidth, targetHeight, true)
+        if (scaled !== cropped) {
+            cropped.recycle()
+        }
+        return scaled
     }
 
     private fun calculateAverageColor(bitmap: Bitmap): Int {
         if (bitmap.width <= 0 || bitmap.height <= 0) return DEFAULT_HERO_COLOR
 
+        val pixels = bitmap.getPixels()
         var red = 0L
         var green = 0L
         var blue = 0L
-        val totalPixels = bitmap.width * bitmap.height
+        val totalPixels = pixels.size
 
-        for (x in 0 until bitmap.width) {
-            for (y in 0 until bitmap.height) {
-                val pixel = bitmap.getPixel(x, y)
-                red += Color.red(pixel)
-                green += Color.green(pixel)
-                blue += Color.blue(pixel)
-            }
+        for (pixel in pixels) {
+            red += Color.red(pixel)
+            green += Color.green(pixel)
+            blue += Color.blue(pixel)
         }
 
         return Color.rgb(
@@ -75,6 +84,7 @@ object HeroColorUtils {
 
         val width = bitmap.width
         val height = bitmap.height
+        val pixels = bitmap.getPixels()
         val stripWidth = (width * 0.16f).toInt().coerceAtLeast(1)
         val stripHeight = (height * 0.28f).toInt().coerceAtLeast(1)
         val sideHeight = (height * 0.52f).toInt().coerceAtLeast(1)
@@ -87,7 +97,7 @@ object HeroColorUtils {
         fun accumulate(startX: Int, endX: Int, startY: Int, endY: Int) {
             for (x in startX until endX.coerceAtMost(width)) {
                 for (y in startY until endY.coerceAtMost(height)) {
-                    val pixel = bitmap.getPixel(x, y)
+                    val pixel = pixels[(y * width) + x]
                     red += Color.red(pixel)
                     green += Color.green(pixel)
                     blue += Color.blue(pixel)
@@ -114,6 +124,7 @@ object HeroColorUtils {
 
         val width = bitmap.width
         val height = bitmap.height
+        val pixels = bitmap.getPixels()
         val bandHeight = (height * 0.16f).toInt().coerceAtLeast(1)
         val innerPadding = (width * 0.08f).toInt()
         val startX = innerPadding.coerceAtMost(width - 1)
@@ -126,7 +137,7 @@ object HeroColorUtils {
 
         for (x in startX until endX) {
             for (y in 0 until bandHeight.coerceAtMost(height)) {
-                val pixel = bitmap.getPixel(x, y)
+                val pixel = pixels[(y * width) + x]
                 red += Color.red(pixel)
                 green += Color.green(pixel)
                 blue += Color.blue(pixel)
@@ -188,5 +199,11 @@ object HeroColorUtils {
             else -> hsl[2].coerceIn(MIN_HERO_LIGHTNESS, MAX_HERO_LIGHTNESS)
         }
         return ColorUtils.HSLToColor(hsl)
+    }
+
+    private fun Bitmap.getPixels(): IntArray {
+        val pixels = IntArray(width * height)
+        getPixels(pixels, 0, width, 0, 0, width, height)
+        return pixels
     }
 }

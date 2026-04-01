@@ -6,7 +6,7 @@ import kotlin.math.pow
 
 // https://github.com/cylonu87/JsUnpacker
 class JsUnpacker(packedJS: String?) {
-    private var packedJS: String? = null
+    private val packedJS: String = packedJS.orEmpty()
 
     /**
      * Detects whether the javascript is P.A.C.K.E.R. coded.
@@ -14,7 +14,7 @@ class JsUnpacker(packedJS: String?) {
      * @return true if it's P.A.C.K.E.R. coded.
      */
     fun detect(): Boolean {
-        val js = packedJS!!.replace(" ", "")
+        val js = packedJS.replace(" ", "")
         val p = Pattern.compile("eval\\(function\\(p,a,c,k,e,[rd]")
         val m = p.matcher(js)
         return m.find()
@@ -35,11 +35,10 @@ class JsUnpacker(packedJS: String?) {
                 )
             var m = p.matcher(js)
             if (m.find() && m.groupCount() == 4) {
-                val payload = m.group(1).replace("\\'", "'")
-                val radixStr = m.group(2)
-
-                val countStr = m.group(3)
-                val symtab = m.group(4).split("\\|".toRegex()).toTypedArray()
+                val payload = m.group(1)?.replace("\\'", "'") ?: return null
+                val radixStr = m.group(2) ?: return null
+                val countStr = m.group(3) ?: return null
+                val symtab = (m.group(4) ?: return null).split("\\|".toRegex()).toTypedArray()
                 var radix = 36
                 var count = 0
                 try {
@@ -59,16 +58,13 @@ class JsUnpacker(packedJS: String?) {
                 val decoded = StringBuilder(payload)
                 var replaceOffset = 0
                 while (m.find()) {
-                    val word = m.group(0)
+                    val word = m.group(0) ?: continue
                     val x = try {
                         unbase.unbase(word)
                     } catch (_: Exception) {
                         break
                     }
-                    var value: String? = null
-                    if (x < symtab.size && x >= 0) {
-                        value = symtab[x]
-                    }
+                    val value = if (x in 0 until symtab.size) symtab[x] else null
                     if (value != null && value.isNotEmpty()) {
                         decoded.replace(m.start() + replaceOffset, m.end() + replaceOffset, value)
                         replaceOffset += value.length - word.length
@@ -93,9 +89,11 @@ class JsUnpacker(packedJS: String?) {
             if (alphabet == null) {
                 ret = str.toInt(radix)
             } else {
+                val localDictionary = dictionary ?: return 0
                 val tmp = StringBuilder(str).reverse().toString()
                 for (i in tmp.indices) {
-                    ret += (radix.toDouble().pow(i.toDouble()) * dictionary!![tmp.substring(i, i + 1)]!!).toInt()
+                    val digit = localDictionary[tmp.substring(i, i + 1)] ?: return 0
+                    ret += (radix.toDouble().pow(i.toDouble()) * digit).toInt()
                 }
             }
             return ret
@@ -117,19 +115,15 @@ class JsUnpacker(packedJS: String?) {
                         alphabet = ALPHABET_95
                     }
                 }
-                dictionary = HashMap(95)
-                for (i in 0 until alphabet!!.length) {
-                    dictionary!![alphabet!!.substring(i, i + 1)] = i
+                alphabet?.let { localAlphabet ->
+                    val localDictionary = HashMap<String, Int>(95)
+                    for (i in localAlphabet.indices) {
+                        localDictionary[localAlphabet.substring(i, i + 1)] = i
+                    }
+                    dictionary = localDictionary
                 }
             }
         }
-    }
-
-    /**
-     * @param  packedJS javascript P.A.C.K.E.R. coded.
-     */
-    init {
-        this.packedJS = packedJS
     }
 
 

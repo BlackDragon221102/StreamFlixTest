@@ -93,8 +93,10 @@ class HomeMobileFragment : Fragment(), TopLevelTabFragment {
         }
 
         // Initial load: avoid an immediate redundant refresh when a fresh cached Home is ready.
-        if (!viewModel.hasCachedHome() || !viewModel.isCachedHomeFresh()) {
+        if (!viewModel.hasCachedHome()) {
             viewModel.getHome()
+        } else if (!viewModel.isCachedHomeFresh()) {
+            viewModel.getHome(silentRefresh = true)
         }
 
         viewLifecycleOwner.lifecycleScope.launch {

@@ -20,7 +20,6 @@ import com.streamflixreborn.streamflix.utils.UserPreferences
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
@@ -78,35 +77,20 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
                 UserPreferences.clearProviderCache(name)
                 _domain = value
                 UserPreferences.streamingcommunityDomain = value
-                runBlocking { rebuildService(value) }
+                cachedGenres = null
+                totalCounts.clear()
+                version = ""
+                _service = null
+                _serviceDomain = null
+                _serviceLanguage = null
             }
         }
 
     override val name: String
         get() = if (language == "it") "StreamingCommunity" else "StreamingCommunity (EN)"
 
-    override val logo get() = if (domain == DEFAULT_DOMAIN) {
-        try {
-            if (Looper.myLooper() == Looper.getMainLooper()) {
-                "https://$DEFAULT_DOMAIN/apple-touch-icon.png"
-            } else {
-                val resolvedBase = resolveFinalBaseUrl("https://$DEFAULT_DOMAIN/")
-                val host = resolvedBase.substringAfter("https://").substringBefore("/")
-                if (host.isNotEmpty() && host != domain) {
-                    runBlocking { rebuildService(host) }
-                    "https://$host/apple-touch-icon.png"
-                } else if (host.isNotEmpty() && host == domain) {
-                    "https://$domain/apple-touch-icon.png"
-                } else {
-                    "https://$DEFAULT_DOMAIN/apple-touch-icon.png"
-                }
-            }
-        } catch (_: Exception) {
-            "https://$DEFAULT_DOMAIN/apple-touch-icon.png"
-        }
-    } else {
-        "https://$domain/apple-touch-icon.png"
-    }
+    override val logo: String
+        get() = "https://${domain.ifBlank { DEFAULT_DOMAIN }}/apple-touch-icon.png"
 
     private val MAX_SEARCH_RESULTS = 60
 
@@ -174,6 +158,8 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
             UserPreferences.streamingcommunityDomain = host
             _serviceLanguage = language
             _serviceDomain = host
+            cachedGenres = null
+            totalCounts.clear()
             _service = StreamingCommunityService.build(finalBase, language, { domain }, { nd ->
                 _domain = nd
                 UserPreferences.streamingcommunityDomain = nd
@@ -222,15 +208,22 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
     }
 
     private var version: String = ""
-        get() {
-            if (field != "") return field
-            synchronized(this) {
-                if (field != "") return field
-                val document = runBlocking { withSslFallback { it.getHome() } }
-                field = InertiaUtils.getVersion(document)
-                return field
-            }
+
+    private suspend fun ensureVersion(): String {
+        if (version.isNotBlank()) return version
+
+        return mutex.withLock {
+            if (version.isNotBlank()) return@withLock version
+
+            runCatching {
+                val document = withSslFallback { it.getHome() }
+                InertiaUtils.getVersion(document)
+            }.getOrNull()
+                ?.takeIf { it.isNotBlank() }
+                ?.also { version = it }
+                ?: "1"
         }
+    }
 
     private fun getImageLink(filename: String?): String? {
         if (filename.isNullOrEmpty()) return null
@@ -253,7 +246,9 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
         }
 
         synchronized(tmdbArtworkCache) {
-            tmdbArtworkCache[key]?.let { return it }
+            if (tmdbArtworkCache.containsKey(key)) {
+                return tmdbArtworkCache[key]
+            }
         }
 
         val artwork = when (show.type) {
@@ -297,9 +292,7 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
         }
 
         synchronized(tmdbArtworkCache) {
-            if (artwork != null) {
-                tmdbArtworkCache[key] = artwork
-            }
+            tmdbArtworkCache[key] = artwork
         }
         return artwork
     }
@@ -448,8 +441,9 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
     override suspend fun search(query: String, page: Int): List<AppAdapter.Item> {
         if (query.isEmpty()) {
             if (cachedGenres != null) return cachedGenres!!
+            val currentVersion = ensureVersion()
             val res = try {
-                withSslFallback { it.getHome(version = version) }
+                withSslFallback { it.getHome(version = currentVersion) }
             } catch (e: Exception) {
                 val json = InertiaUtils.parseInertiaData(withSslFallback { it.getHome() })
                 Gson().fromJson(json.toString(), StreamingCommunityService.HomeRes::class.java)
@@ -520,8 +514,9 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
 
     override suspend fun getMovie(id: String): Movie = coroutineScope {
         val resDeferred = async {
+            val currentVersion = ensureVersion()
             try {
-                withSslFallback { it.getDetails(id, version = version, language = LANG) }.also { if (version != it.version) version = it.version }
+                withSslFallback { it.getDetails(id, version = currentVersion, language = LANG) }.also { if (version != it.version) version = it.version }
             } catch (e: Exception) {
                 val doc = StreamingCommunityService.fetchDocumentWithRedirectsAndSslFallback("https://$domain/$LANG/titles/$id", "https://$domain/", language)
                 Gson().fromJson(InertiaUtils.parseInertiaData(doc).toString(), StreamingCommunityService.HomeRes::class.java).also { if (version != it.version) version = it.version }
@@ -554,8 +549,9 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
 
     override suspend fun getTvShow(id: String): TvShow = coroutineScope {
         val resDeferred = async {
+            val currentVersion = ensureVersion()
             try {
-                withSslFallback { it.getDetails(id, version = version, language = LANG) }.also { if (version != it.version) version = it.version }
+                withSslFallback { it.getDetails(id, version = currentVersion, language = LANG) }.also { if (version != it.version) version = it.version }
             } catch (e: Exception) {
                 val doc = StreamingCommunityService.fetchDocumentWithRedirectsAndSslFallback("https://$domain/$LANG/titles/$id", "https://$domain/", language)
                 Gson().fromJson(InertiaUtils.parseInertiaData(doc).toString(), StreamingCommunityService.HomeRes::class.java).also { if (version != it.version) version = it.version }
@@ -589,8 +585,9 @@ class StreamingCommunityProvider(private val _language: String? = null) : Provid
     }
 
     override suspend fun getEpisodesBySeason(seasonId: String): List<Episode> {
+        val currentVersion = ensureVersion()
         val res: StreamingCommunityService.SeasonRes = try {
-            withSslFallback { it.getSeasonDetails(seasonId, version = version, language = LANG) }
+            withSslFallback { it.getSeasonDetails(seasonId, version = currentVersion, language = LANG) }
         } catch (e: Exception) {
             val doc = StreamingCommunityService.fetchDocumentWithRedirectsAndSslFallback("https://$domain/$LANG/titles/$seasonId", "https://$domain/", language)
             Gson().fromJson(InertiaUtils.parseInertiaData(doc).toString(), StreamingCommunityService.SeasonRes::class.java)

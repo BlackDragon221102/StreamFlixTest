@@ -144,6 +144,7 @@ class HomeTvFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        swiperHandler.removeCallbacksAndMessages(null)
         appAdapter.onSaveInstanceState(binding.vgvHome)
         _binding = null
     }
@@ -151,7 +152,10 @@ class HomeTvFragment : Fragment() {
 
     private var swiperHasLastFocus: Boolean = false
     fun updateBackground(uri: String?, swiperHasFocus: Boolean? = false) {
-        if (swiperHasFocus == null && !swiperHasLastFocus) return
+        if (uri.isNullOrEmpty()) return
+        if (swiperHasFocus == null && !swiperHasLastFocus) {
+            swiperHasLastFocus = true
+        }
 
         Glide.with(requireContext())
             .load(uri)

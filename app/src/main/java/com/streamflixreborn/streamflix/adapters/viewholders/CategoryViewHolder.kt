@@ -73,6 +73,18 @@ class CategoryViewHolder(
         }
     }
 
+    fun release() {
+        mobileSwiperAutoScroll?.let { mobileSwiperHandler.removeCallbacks(it) }
+        mobileSwiperAutoScroll = null
+
+        if (_binding is ContentCategorySwiperMobileBinding) {
+            mobileSwiperCallback?.let { callback ->
+                _binding.vpCategorySwiper.unregisterOnPageChangeCallback(callback)
+            }
+        }
+        mobileSwiperCallback = null
+    }
+
     private fun displayMobileItem(
         binding: ItemCategoryMobileBinding,
         onMovieClick: ((Movie) -> Unit)?,
@@ -129,8 +141,7 @@ class CategoryViewHolder(
             listOfNotNull(category.list.firstOrNull()),
         ).flatten()
 
-        mobileSwiperAutoScroll?.let { mobileSwiperHandler.removeCallbacks(it) }
-        mobileSwiperCallback?.let { binding.vpCategorySwiper.unregisterOnPageChangeCallback(it) }
+        release()
 
         binding.vpCategorySwiper.apply {
             setPageTransformer { page, _ ->

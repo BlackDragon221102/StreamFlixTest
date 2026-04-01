@@ -2,6 +2,8 @@ package com.streamflixreborn.streamflix.utils
 
 import android.content.Context
 import android.media.AudioManager
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.GestureDetector
 import android.view.InputDevice
@@ -13,11 +15,6 @@ import android.widget.TextView
 import androidx.media3.ui.PlayerView
 import com.streamflixreborn.streamflix.ui.PlayerMobileView
 import com.streamflixreborn.streamflix.ui.PlayerTvView
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 class PlayerGestureHelper(
@@ -34,7 +31,11 @@ class PlayerGestureHelper(
     private val gestureDetector: GestureDetector
     private val scaleGestureDetector: ScaleGestureDetector
     private val audioManager: AudioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-    private var hideJob: Job? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val hideBarsRunnable = Runnable {
+        brightnessLayout.visibility = View.GONE
+        volumeLayout.visibility = View.GONE
+    }
     
     private val sensitivity = 1.2f
     private var isScrolling = false
@@ -139,7 +140,7 @@ class PlayerGestureHelper(
     }
 
     private fun handleBrightness(delta: Float) {
-        hideJob?.cancel()
+        mainHandler.removeCallbacks(hideBarsRunnable)
         brightnessLayout.visibility = View.VISIBLE
         volumeLayout.visibility = View.GONE
 
@@ -168,7 +169,7 @@ class PlayerGestureHelper(
     }
 
     private fun handleVolume(delta: Float) {
-        hideJob?.cancel()
+        mainHandler.removeCallbacks(hideBarsRunnable)
         volumeLayout.visibility = View.VISIBLE
         brightnessLayout.visibility = View.GONE
 
@@ -187,11 +188,12 @@ class PlayerGestureHelper(
     }
 
     private fun hideBars() {
-        hideJob?.cancel()
-        hideJob = CoroutineScope(Dispatchers.Main).launch {
-            delay(1000)
-            brightnessLayout.visibility = View.GONE
-            volumeLayout.visibility = View.GONE
-        }
+        mainHandler.removeCallbacks(hideBarsRunnable)
+        mainHandler.postDelayed(hideBarsRunnable, 1000)
+    }
+
+    fun release() {
+        mainHandler.removeCallbacks(hideBarsRunnable)
+        playerView.setOnTouchListener(null)
     }
 }

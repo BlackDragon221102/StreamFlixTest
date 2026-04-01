@@ -10,6 +10,7 @@ import com.streamflixreborn.streamflix.models.Episode
 import com.streamflixreborn.streamflix.models.Movie
 import com.streamflixreborn.streamflix.models.TvShow
 import com.streamflixreborn.streamflix.utils.CatalogSeedUtils
+import com.streamflixreborn.streamflix.utils.CatalogRefreshUtils
 import com.streamflixreborn.streamflix.utils.PrefetchUtils
 import com.streamflixreborn.streamflix.utils.UiCacheStore
 import com.streamflixreborn.streamflix.utils.UserPreferences
@@ -26,7 +27,7 @@ import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
 
 class HomeViewModel(database: AppDatabase) : ViewModel() {
-    private val diskCacheKey = "mobile_home_categories_v1"
+    private val diskCacheKey = CatalogRefreshUtils.HOME_CACHE_KEY
     private val db = database
     private var cachedCategories: List<Category>? = null
     private var lastHomeLoadMillis: Long = 0L
@@ -195,7 +196,10 @@ class HomeViewModel(database: AppDatabase) : ViewModel() {
         return (System.currentTimeMillis() - lastHomeLoadMillis) < homeCacheTtlMillis
     }
 
-    fun getHome(forceRefresh: Boolean = false) = viewModelScope.launch(Dispatchers.IO) {
+    fun getHome(
+        forceRefresh: Boolean = false,
+        silentRefresh: Boolean = false,
+    ) = viewModelScope.launch(Dispatchers.IO) {
         val sharedCached = synchronized(homeCache) { homeCache[cacheKey] }
         if (cachedCategories == null && sharedCached != null) {
             cachedCategories = sharedCached.categories
@@ -215,6 +219,8 @@ class HomeViewModel(database: AppDatabase) : ViewModel() {
 
         val cached = cachedCategories
         val cacheIsFresh = (System.currentTimeMillis() - lastHomeLoadMillis) < homeCacheTtlMillis
+        val canUseSilentRefresh = silentRefresh && cached != null
+
         if (!forceRefresh && cached != null) {
             _state.emit(State.SuccessLoading(cached))
             viewModelScope.launch(Dispatchers.IO) {
@@ -273,7 +279,9 @@ class HomeViewModel(database: AppDatabase) : ViewModel() {
                 )
             }
             UiCacheStore.saveCategories(diskCacheKey, categories, lastHomeLoadMillis)
-            _state.emit(State.SuccessLoading(categories))
+            if (!canUseSilentRefresh) {
+                _state.emit(State.SuccessLoading(categories))
+            }
             viewModelScope.launch(Dispatchers.IO) {
                 CatalogSeedUtils.seedFromCategories(db, categories, "seed_home_${cacheKey}")
             }

@@ -102,8 +102,6 @@ class PlayerMobileFragment : Fragment() {
     private lateinit var httpDataSource: HttpDataSource.Factory
     private lateinit var dataSourceFactory: DataSource.Factory
     private lateinit var mediaSession: MediaSession
-    private lateinit var progressHandler: android.os.Handler
-    private lateinit var progressRunnable: Runnable
     private lateinit var gestureHelper: PlayerGestureHelper
 
     private var servers = listOf<Video.Server>()
@@ -112,6 +110,22 @@ class PlayerMobileFragment : Fragment() {
     private var currentVideo: Video? = null
     private var currentServer: Video.Server? = null
     private var isIgnoringPip = false
+    private val playerHttpClient by lazy {
+        OkHttpClient.Builder()
+            .dns(DnsResolver.doh)
+            .build()
+    }
+    private val progressHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val progressRunnable = object : Runnable {
+        override fun run() {
+            if (::player.isInitialized && player.isPlaying) {
+                val show = player.currentPosition in 3000..120000
+                showSkipIntroButton(show)
+                progressHandler.postDelayed(this, 1000)
+            }
+        }
+    }
+    private var playbackListener: Player.Listener? = null
 
     private val chooserReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -464,6 +478,9 @@ class PlayerMobileFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        if (::gestureHelper.isInitialized) {
+            gestureHelper.release()
+        }
         val window = requireActivity().window
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             window.attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
@@ -895,7 +912,8 @@ class PlayerMobileFragment : Fragment() {
                 startActivity(Intent.createChooser(intent, getString(R.string.player_external_player_title)))
             }
         }
-        player.addListener(object : Player.Listener {
+        playbackListener?.let(player::removeListener)
+        playbackListener = object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 super.onIsPlayingChanged(isPlaying)
                 binding.pvPlayer.keepScreenOn = isPlaying || UserPreferences.keepScreenOnWhenPaused
@@ -975,7 +993,8 @@ class PlayerMobileFragment : Fragment() {
                 super.onPlayerError(error)
                 Log.e("PlayerMobileFragment", "onPlayerError: ", error)
             }
-        })
+        }
+        player.addListener(playbackListener!!)
 
         if (currentPosition == 0L) {
             val videoType = args.videoType
@@ -1019,21 +1038,12 @@ class PlayerMobileFragment : Fragment() {
                 this.currentPosition >= (this.duration - UserPreferences.autoplayBuffer * 1000)
     }
     private fun startProgressHandler() {
-        progressHandler = android.os.Handler(android.os.Looper.getMainLooper())
-        progressRunnable = Runnable {
-            if (player.isPlaying) {
-                val show = player.currentPosition in 3000..120000
-                showSkipIntroButton(show)
-            }
-            progressHandler.postDelayed(progressRunnable, 1000)
-        }
+        progressHandler.removeCallbacks(progressRunnable)
         progressHandler.post(progressRunnable)
     }
 
     private fun stopProgressHandler() {
-        if (::progressHandler.isInitialized) {
-            progressHandler.removeCallbacks(progressRunnable)
-        }
+        progressHandler.removeCallbacks(progressRunnable)
     }
 
     private fun showSkipIntroButton(show: Boolean) {
@@ -1060,15 +1070,15 @@ class PlayerMobileFragment : Fragment() {
 
     private fun initializePlayer(extraBuffering: Boolean) {
         if (::player.isInitialized) {
+            stopProgressHandler()
+            playbackListener?.let(player::removeListener)
+            playbackListener = null
             player.release()
             mediaSession.release()
         }
         currentExtraBuffering = extraBuffering
 
-        val okHttpClient = OkHttpClient.Builder()
-            .dns(DnsResolver.doh)
-            .build()
-        httpDataSource = OkHttpDataSource.Factory(okHttpClient)
+        httpDataSource = OkHttpDataSource.Factory(playerHttpClient)
 
         dataSourceFactory = DefaultDataSource.Factory(requireContext(), httpDataSource)
 

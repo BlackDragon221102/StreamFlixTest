@@ -21,8 +21,8 @@ import java.security.SecureRandom
 
 @GlideModule
 class GlideCustomModule : AppGlideModule() {
-    private fun getOkHttpClient(): OkHttpClient {
-        val appCache = Cache(File("cacheDir", "okhttpcache"), 10 * 1024 * 1024)
+    private fun getOkHttpClient(context: Context): OkHttpClient {
+        val appCache = Cache(File(context.cacheDir, "okhttpcache"), 10 * 1024 * 1024)
 
         val logging = HttpLoggingInterceptor().setLevel(HttpLoggingInterceptor.Level.BASIC)
 
@@ -52,7 +52,7 @@ class GlideCustomModule : AppGlideModule() {
     override fun registerComponents(
         context: Context, glide: Glide, registry: com.bumptech.glide.Registry
     ) {
-        val okHttpClient = getOkHttpClient()
+        val okHttpClient = getOkHttpClient(context)
         registry.replace(
             GlideUrl::class.java, InputStream::class.java, OkHttpUrlLoader.Factory(okHttpClient)
         )
