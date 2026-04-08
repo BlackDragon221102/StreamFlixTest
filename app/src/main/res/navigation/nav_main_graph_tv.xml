@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/nav_main_graph_tv"
-    app:startDestination="@id/providers">
+    app:startDestination="@id/home">
 
     <fragment
         android:id="@+id/providers"
@@ -36,10 +36,18 @@
         tools:layout="@layout/fragment_home_tv">
         <action
             android:id="@+id/action_home_to_movie"
-            app:destination="@id/movie" />
+            app:destination="@id/movie"
+            app:enterAnim="@anim/fade_in"
+            app:exitAnim="@anim/fade_out"
+            app:popEnterAnim="@anim/fade_in"
+            app:popExitAnim="@anim/fade_out" />
         <action
             android:id="@+id/action_home_to_tv_show"
-            app:destination="@id/tv_show" />
+            app:destination="@id/tv_show"
+            app:enterAnim="@anim/fade_in"
+            app:exitAnim="@anim/fade_out"
+            app:popEnterAnim="@anim/fade_in"
+            app:popExitAnim="@anim/fade_out" />
     </fragment>
     <fragment
         android:id="@+id/search"
@@ -48,10 +56,18 @@
         tools:layout="@layout/fragment_search_tv">
         <action
             android:id="@+id/action_search_to_movie"
-            app:destination="@id/movie" />
+            app:destination="@id/movie"
+            app:enterAnim="@anim/fade_in"
+            app:exitAnim="@anim/fade_out"
+            app:popEnterAnim="@anim/fade_in"
+            app:popExitAnim="@anim/fade_out" />
         <action
             android:id="@+id/action_search_to_tv_show"
-            app:destination="@id/tv_show" />
+            app:destination="@id/tv_show"
+            app:enterAnim="@anim/fade_in"
+            app:exitAnim="@anim/fade_out"
+            app:popEnterAnim="@anim/fade_in"
+            app:popExitAnim="@anim/fade_out" />
     </fragment>
     <fragment
         android:id="@+id/movies"
@@ -60,7 +76,11 @@
         tools:layout="@layout/fragment_movies_tv">
         <action
             android:id="@+id/action_movies_to_movie"
-            app:destination="@id/movie" />
+            app:destination="@id/movie"
+            app:enterAnim="@anim/fade_in"
+            app:exitAnim="@anim/fade_out"
+            app:popEnterAnim="@anim/fade_in"
+            app:popExitAnim="@anim/fade_out" />
     </fragment>
     <fragment
         android:id="@+id/tv_shows"
@@ -69,7 +89,11 @@
         tools:layout="@layout/fragment_tv_shows_tv">
         <action
             android:id="@+id/action_tv_shows_to_tv_show"
-            app:destination="@id/tv_show" />
+            app:destination="@id/tv_show"
+            app:enterAnim="@anim/fade_in"
+            app:exitAnim="@anim/fade_out"
+            app:popEnterAnim="@anim/fade_in"
+            app:popExitAnim="@anim/fade_out" />
     </fragment>
     <fragment
         android:id="@+id/movie"
@@ -81,7 +105,11 @@
             app:argType="string" />
         <action
             android:id="@+id/action_movie_to_player"
-            app:destination="@id/player" />
+            app:destination="@id/player"
+            app:enterAnim="@anim/fade_in"
+            app:exitAnim="@anim/fade_out"
+            app:popEnterAnim="@anim/fade_in"
+            app:popExitAnim="@anim/fade_out" />
         <action
             android:id="@+id/action_movie_to_people"
             app:destination="@id/people" />
@@ -114,7 +142,11 @@
             app:destination="@id/tv_show" />
         <action
             android:id="@+id/action_tv_show_to_player"
-            app:destination="@id/player" />
+            app:destination="@id/player"
+            app:enterAnim="@anim/fade_in"
+            app:exitAnim="@anim/fade_out"
+            app:popEnterAnim="@anim/fade_in"
+            app:popExitAnim="@anim/fade_out" />
     </fragment>
     <fragment
         android:id="@+id/season"
@@ -123,7 +155,11 @@
         tools:layout="@layout/fragment_season_tv">
         <action
             android:id="@+id/action_season_to_player"
-            app:destination="@id/player" />
+            app:destination="@id/player"
+            app:enterAnim="@anim/fade_in"
+            app:exitAnim="@anim/fade_out"
+            app:popEnterAnim="@anim/fade_in"
+            app:popExitAnim="@anim/fade_out" />
         <argument
             android:name="tvShowId"
             app:argType="string" />

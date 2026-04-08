@@ -25,13 +25,18 @@ android {
 
     def properties = new Properties()
     properties.load(project.rootProject.file('local.properties').newDataInputStream())
+    def releaseStoreFile = properties.getProperty("RELEASE_STORE_FILE")
+    def releaseStorePassword = properties.getProperty("RELEASE_STORE_PASSWORD")
+    def releaseKeyAlias = properties.getProperty("RELEASE_KEY_ALIAS")
+    def releaseKeyPassword = properties.getProperty("RELEASE_KEY_PASSWORD")
+    def hasReleaseSigning = [releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword].every { it != null && !it.isEmpty() }
 
     defaultConfig {
         applicationId "com.streamflixreborn.streamflix"
         minSdk 21
         targetSdk 35
-        versionCode 132
-        versionName "1.7.103"
+        versionCode 144
+        versionName "2.0.10"
 
         buildConfigField "String", "APP_LAYOUT", "\"${properties.getProperty("APP_LAYOUT")}\""
         buildConfigField "String", "TMDB_API_KEY", "\"${properties.getProperty("TMDB_API_KEY")}\""
@@ -60,6 +65,17 @@ android {
         jvmTarget = '17'
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         debug {
             minifyEnabled false
@@ -69,6 +85,9 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 
@@ -87,6 +106,7 @@ dependencies {
     implementation project(path: ':navigation')
 
     implementation 'androidx.core:core-ktx:1.17.0'
+    implementation 'androidx.palette:palette-ktx:1.0.0'
     implementation 'androidx.leanback:leanback:1.2.0'
     implementation 'com.github.bumptech.glide:glide:5.0.0-rc01'
     implementation 'androidx.work:work-runtime-ktx:2.10.0'
@@ -124,7 +144,8 @@ dependencies {
 
     implementation("org.mozilla:rhino:1.8.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
-    
+
+    testImplementation 'junit:junit:4.13.2'
 }
 
 ksp {

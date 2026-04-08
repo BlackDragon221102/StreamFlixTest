@@ -5,6 +5,7 @@ import androidx.room.Entity
 import androidx.room.Ignore
 import androidx.room.PrimaryKey
 import com.streamflixreborn.streamflix.adapters.AppAdapter
+import com.streamflixreborn.streamflix.utils.ArtworkResolver
 import com.streamflixreborn.streamflix.utils.format
 import com.streamflixreborn.streamflix.utils.toCalendar
 import java.util.Calendar
@@ -41,6 +42,7 @@ class Movie(
 ) : Show, WatchItem, AppAdapter.Item {
 
     var released = released?.toCalendar()
+    var favoriteAddedAtUtcMillis: Long? = null
 
     override var isWatched: Boolean = false
     override var watchedDate: Calendar? = null
@@ -51,18 +53,39 @@ class Movie(
 
     fun isSame(movie: Movie): Boolean {
         if (isFavorite != movie.isFavorite) return false
+        if (favoriteAddedAtUtcMillis != movie.favoriteAddedAtUtcMillis) return false
         if (isWatched != movie.isWatched) return false
         if (watchedDate != movie.watchedDate) return false
         if (watchHistory != movie.watchHistory) return false
         return true
     }
 
-    fun merge(movie: Movie): Movie {
+    fun mergeCatalogFrom(movie: Movie): Movie {
+        this.title = movie.title.ifBlank { this.title }
+        this.overview = movie.overview?.takeIf { it.isNotBlank() } ?: this.overview
+        this.runtime = movie.runtime ?: this.runtime
+        this.trailer = movie.trailer ?: this.trailer
+        this.quality = movie.quality ?: this.quality
+        this.rating = movie.rating ?: this.rating
+        this.poster = ArtworkResolver.choosePreferredImage(this.poster, movie.poster)
+        this.banner = ArtworkResolver.choosePreferredImage(this.banner, movie.banner)
+        this.imdbId = movie.imdbId ?: this.imdbId
+        this.providerName = movie.providerName ?: this.providerName
+        this.released = movie.released ?: this.released
+        return this
+    }
+
+    fun applyUserStateFrom(movie: Movie): Movie {
         this.isFavorite = movie.isFavorite
+        this.favoriteAddedAtUtcMillis = movie.favoriteAddedAtUtcMillis
         this.isWatched = movie.isWatched
         this.watchedDate = movie.watchedDate
         this.watchHistory = movie.watchHistory
         return this
+    }
+
+    fun merge(movie: Movie): Movie {
+        return mergeCatalogFrom(movie).applyUserStateFrom(movie)
     }
 
 
@@ -128,6 +151,7 @@ class Movie(
         if (cast != other.cast) return false
         if (recommendations != other.recommendations) return false
         if (isFavorite != other.isFavorite) return false
+        if (favoriteAddedAtUtcMillis != other.favoriteAddedAtUtcMillis) return false
         if (released != other.released) return false
         if (isFavorite != other.isFavorite) return false
         if (isWatched != other.isWatched) return false
@@ -154,6 +178,7 @@ class Movie(
         result = 31 * result + recommendations.hashCode()
         result = 31 * result + (released?.hashCode() ?: 0)
         result = 31 * result + isFavorite.hashCode()
+        result = 31 * result + (favoriteAddedAtUtcMillis?.hashCode() ?: 0)
         result = 31 * result + isWatched.hashCode()
         result = 31 * result + (watchedDate?.hashCode() ?: 0)
         result = 31 * result + (watchHistory?.hashCode() ?: 0)

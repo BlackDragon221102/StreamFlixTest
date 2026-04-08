@@ -42,9 +42,11 @@ import com.streamflixreborn.streamflix.databinding.ItemEpisodeContinueWatchingTv
 import com.streamflixreborn.streamflix.databinding.ItemEpisodeMobileBinding
 import com.streamflixreborn.streamflix.databinding.ItemEpisodeTvBinding
 import com.streamflixreborn.streamflix.databinding.ItemGenreGridMobileBinding
+import com.streamflixreborn.streamflix.databinding.ItemGenreMobileBinding
 import com.streamflixreborn.streamflix.databinding.ItemGenreGridTvBinding
 import com.streamflixreborn.streamflix.databinding.ItemLoadingBinding
 import com.streamflixreborn.streamflix.databinding.ItemMovieGridMobileBinding
+import com.streamflixreborn.streamflix.databinding.ItemMovieGenreMobileBinding
 import com.streamflixreborn.streamflix.databinding.ItemMovieGridTvBinding
 import com.streamflixreborn.streamflix.databinding.ItemMovieMobileBinding
 import com.streamflixreborn.streamflix.databinding.ItemMovieTvBinding
@@ -56,6 +58,7 @@ import com.streamflixreborn.streamflix.databinding.ItemSeasonMobileBinding
 import com.streamflixreborn.streamflix.databinding.ItemSeasonTvBinding
 import com.streamflixreborn.streamflix.databinding.ItemTvShowGridBinding
 import com.streamflixreborn.streamflix.databinding.ItemTvShowGridMobileBinding
+import com.streamflixreborn.streamflix.databinding.ItemTvShowGenreMobileBinding
 import com.streamflixreborn.streamflix.databinding.ItemTvShowMobileBinding
 import com.streamflixreborn.streamflix.databinding.ItemTvShowTvBinding
 import com.streamflixreborn.streamflix.models.Category
@@ -81,6 +84,7 @@ class AppAdapter(
     var onEpisodeClickListener: ((Episode) -> Unit)? = null
     var onSeasonClickListener: ((Season) -> Unit)? = null
     var onProviderClickListener: ((Provider) -> Unit)? = null
+    var onHeroImageChangeListener: ((String?) -> Unit)? = null
     // ---------------------------------
     interface Item {
         var itemType: Type
@@ -102,6 +106,7 @@ class AppAdapter(
 
         GENRE_GRID_MOBILE_ITEM,
         GENRE_GRID_TV_ITEM,
+        GENRE_MOBILE_ITEM,
 
         HEADER,
 
@@ -112,6 +117,7 @@ class AppAdapter(
         MOVIE_CONTINUE_WATCHING_MOBILE_ITEM,
         MOVIE_CONTINUE_WATCHING_TV_ITEM,
         MOVIE_GRID_MOBILE_ITEM,
+        MOVIE_GENRE_MOBILE_ITEM,
         MOVIE_GRID_TV_ITEM,
         MOVIE_SWIPER_MOBILE_ITEM,
 
@@ -136,6 +142,7 @@ class AppAdapter(
         TV_SHOW_MOBILE_ITEM,
         TV_SHOW_TV_ITEM,
         TV_SHOW_GRID_MOBILE_ITEM,
+        TV_SHOW_GENRE_MOBILE_ITEM,
         TV_SHOW_GRID_TV_ITEM,
         TV_SHOW_SWIPER_MOBILE_ITEM,
 
@@ -151,12 +158,16 @@ class AppAdapter(
         TV_SHOW_RECOMMENDATIONS_TV,
     }
 
-    private val states = mutableMapOf<Int, Parcelable?>()
+    private val states = mutableMapOf<String, Parcelable?>()
 
     var isLoading = false
     private var header: Header<ViewBinding>? = null
     private var onLoadMoreListener: (() -> Unit)? = null
     private var footer: Footer<ViewBinding>? = null
+
+    init {
+        stateRestorationPolicy = StateRestorationPolicy.PREVENT_WHEN_EMPTY
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder =
         when (Type.entries[viewType]) {
@@ -237,6 +248,13 @@ class AppAdapter(
                     false,
                 )
             )
+            Type.GENRE_MOBILE_ITEM -> GenreViewHolder(
+                ItemGenreMobileBinding.inflate(
+                    LayoutInflater.from(parent.context),
+                    parent,
+                    false,
+                )
+            )
 
             Type.HEADER -> HeaderViewHolder(
                 header!!.binding(parent)
@@ -268,6 +286,13 @@ class AppAdapter(
             )
             Type.MOVIE_GRID_MOBILE_ITEM -> MovieViewHolder(
                 ItemMovieGridMobileBinding.inflate(
+                    LayoutInflater.from(parent.context),
+                    parent,
+                    false,
+                )
+            )
+            Type.MOVIE_GENRE_MOBILE_ITEM -> MovieViewHolder(
+                ItemMovieGenreMobileBinding.inflate(
                     LayoutInflater.from(parent.context),
                     parent,
                     false,
@@ -411,6 +436,13 @@ class AppAdapter(
                     false
                 )
             )
+            Type.TV_SHOW_GENRE_MOBILE_ITEM -> TvShowViewHolder(
+                ItemTvShowGenreMobileBinding.inflate(
+                    LayoutInflater.from(parent.context),
+                    parent,
+                    false
+                )
+            )
             Type.TV_SHOW_GRID_TV_ITEM -> TvShowViewHolder(
                 ItemTvShowGridBinding.inflate(
                     LayoutInflater.from(parent.context),
@@ -499,10 +531,7 @@ class AppAdapter(
         }
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-        if (position >= itemCount - 5 && !isLoading) {
-            onLoadMoreListener?.invoke()
-            isLoading = true
-        }
+        maybeRequestLoadMore(position)
 
         val adjustedPosition = header?.let { position - 1 } ?: position
         when (holder) {
@@ -510,6 +539,7 @@ class AppAdapter(
                 items[adjustedPosition] as Category,
                 onMovieClickListener,
                 onTvShowClickListener,
+                onHeroImageChangeListener,
             )
             is EpisodeViewHolder -> holder.bind(
                 items[adjustedPosition] as Episode
@@ -536,7 +566,7 @@ class AppAdapter(
             ) // Los listeners se manejan dentro del ViewHolder
         }
 
-        val state = states[holder.layoutPosition]
+        val state = stateKeyForAdapterPosition(position)?.let(states::get)
         if (state != null) {
             when (holder) {
                 is CategoryViewHolder -> holder.childRecyclerView?.layoutManager?.onRestoreInstanceState(state)
@@ -576,7 +606,16 @@ class AppAdapter(
     override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
         super.onViewRecycled(holder)
 
-        states[holder.layoutPosition] = when (holder) {
+        if (holder is CategoryViewHolder) {
+            holder.release()
+        }
+
+        val key = holder.bindingAdapterPosition
+            .takeIf { it != RecyclerView.NO_POSITION }
+            ?.let(::stateKeyForAdapterPosition)
+        if (key == null) return
+
+        states[key] = when (holder) {
             is CategoryViewHolder -> holder.childRecyclerView?.layoutManager?.onSaveInstanceState()
             is MovieViewHolder -> holder.childRecyclerView?.layoutManager?.onSaveInstanceState()
             is TvShowViewHolder -> holder.childRecyclerView?.layoutManager?.onSaveInstanceState()
@@ -585,10 +624,11 @@ class AppAdapter(
     }
 
     fun onSaveInstanceState(recyclerView: RecyclerView) {
-        for (position in items.indices) {
+        for (position in 0 until itemCount) {
             val holder = recyclerView.findViewHolderForAdapterPosition(position) ?: continue
+            val key = stateKeyForAdapterPosition(position) ?: continue
 
-            states[position] = when (holder) {
+            states[key] = when (holder) {
                 is CategoryViewHolder -> holder.childRecyclerView?.layoutManager?.onSaveInstanceState()
                 is MovieViewHolder -> holder.childRecyclerView?.layoutManager?.onSaveInstanceState()
                 is TvShowViewHolder -> holder.childRecyclerView?.layoutManager?.onSaveInstanceState()
@@ -598,7 +638,23 @@ class AppAdapter(
     }
 
 
-    fun submitList(list: List<Item>) {
+    fun submitList(
+        list: List<Item>,
+        forceReplace: Boolean = false,
+        onCommitted: (() -> Unit)? = null,
+    ) {
+        val validKeys = list.mapNotNull(::itemStateKey).toSet()
+        states.keys.retainAll(validKeys)
+        isLoading = false
+
+        if (forceReplace) {
+            items.clear()
+            items.addAll(list)
+            notifyDataSetChanged()
+            onCommitted?.invoke()
+            return
+        }
+
         val result = DiffUtil.calculateDiff(object : DiffUtil.Callback() {
             override fun getOldListSize() = items.size
 
@@ -627,25 +683,10 @@ class AppAdapter(
             }
         })
 
-        if (items.size < list.size) {
-            for (newItemPosition in list.indices.reversed()) {
-                val oldItemPosition = result.convertNewPositionToOld(newItemPosition)
-                    .takeIf { it != -1 } ?: continue
-
-                states[newItemPosition] = states[oldItemPosition]
-            }
-        } else if (items.size > list.size) {
-            for (oldItemPosition in items.indices) {
-                val newItemPosition = result.convertOldPositionToNew(oldItemPosition)
-                    .takeIf { it != -1 } ?: continue
-
-                states[newItemPosition] = states[oldItemPosition]
-            }
-        }
-
         items.clear()
         items.addAll(list)
         result.dispatchUpdatesTo(this)
+        onCommitted?.invoke()
     }
 
 
@@ -661,12 +702,52 @@ class AppAdapter(
     }
 
     fun setOnLoadMoreListener(onLoadMoreListener: (() -> Unit)?) {
-        if (this.onLoadMoreListener != null && onLoadMoreListener == null) {
-            this.onLoadMoreListener = null
-            notifyItemRemoved(items.size)
-        } else {
-            this.onLoadMoreListener = onLoadMoreListener
+        val hadLoadMore = this.onLoadMoreListener != null
+        val oldPosition = if (hadLoadMore) itemCount - 1 - (if (footer != null) 1 else 0) else RecyclerView.NO_POSITION
+
+        this.onLoadMoreListener = onLoadMoreListener
+
+        val hasLoadMore = this.onLoadMoreListener != null
+        val newPosition = if (hasLoadMore) itemCount - 1 - (if (footer != null) 1 else 0) else RecyclerView.NO_POSITION
+
+        when {
+            !hadLoadMore && hasLoadMore -> notifyItemInserted(newPosition)
+            hadLoadMore && !hasLoadMore -> notifyItemRemoved(oldPosition)
+            hadLoadMore && hasLoadMore && oldPosition != newPosition -> notifyItemMoved(oldPosition, newPosition)
         }
+
+        if (!hasLoadMore) {
+            isLoading = false
+        }
+    }
+
+    private fun maybeRequestLoadMore(position: Int) {
+        val listener = onLoadMoreListener ?: return
+        val contentIndex = contentIndexForAdapterPosition(position) ?: return
+        if (items.isEmpty() || isLoading) return
+
+        val thresholdIndex = (items.lastIndex - 4).coerceAtLeast(0)
+        if (contentIndex < thresholdIndex) return
+
+        isLoading = true
+        listener.invoke()
+    }
+
+    private fun contentIndexForAdapterPosition(position: Int): Int? {
+        val adjustedPosition = header?.let { position - 1 } ?: position
+        return adjustedPosition.takeIf { it in items.indices }
+    }
+
+    private fun stateKeyForAdapterPosition(position: Int): String? =
+        contentIndexForAdapterPosition(position)
+            ?.let(items::get)
+            ?.let(::itemStateKey)
+
+    private fun itemStateKey(item: Item): String? = when (item) {
+        is Category -> "category:${item.itemType.name}:${item.name}"
+        is Movie -> "movie:${item.itemType.name}:${item.id}"
+        is TvShow -> "tv:${item.itemType.name}:${item.id}"
+        else -> null
     }
 
     fun <T : ViewBinding> setFooter(

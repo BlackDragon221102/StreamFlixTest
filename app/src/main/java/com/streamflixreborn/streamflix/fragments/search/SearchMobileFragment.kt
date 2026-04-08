@@ -16,6 +16,7 @@ import androidx.lifecycle.flowWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
 import com.streamflixreborn.streamflix.R
+import com.streamflixreborn.streamflix.activities.main.MainMobileActivity
 import com.streamflixreborn.streamflix.adapters.AppAdapter
 import com.streamflixreborn.streamflix.database.AppDatabase
 import com.streamflixreborn.streamflix.databinding.FragmentSearchMobileBinding
@@ -26,6 +27,7 @@ import com.streamflixreborn.streamflix.models.TvShow
 import com.streamflixreborn.streamflix.ui.SpacingItemDecoration
 import com.streamflixreborn.streamflix.utils.CacheUtils
 import com.streamflixreborn.streamflix.utils.LoggingUtils
+import com.streamflixreborn.streamflix.utils.TopLevelTabFragment
 import com.streamflixreborn.streamflix.utils.UserPreferences // <-- IMPORT AÑADIDO
 import com.streamflixreborn.streamflix.utils.VoiceRecognitionHelper
 import com.streamflixreborn.streamflix.utils.dp
@@ -33,9 +35,10 @@ import com.streamflixreborn.streamflix.utils.hideKeyboard
 import com.streamflixreborn.streamflix.utils.viewModelsFactory
 import kotlinx.coroutines.launch
 
-class SearchMobileFragment : Fragment() {
+class SearchMobileFragment : Fragment(), TopLevelTabFragment {
 
     private var hasAutoCleared409: Boolean = false
+    private var pendingTopLevelScrollToTop = false
 
     private var _binding: FragmentSearchMobileBinding? = null
     private val binding get() = _binding!!
@@ -124,6 +127,11 @@ class SearchMobileFragment : Fragment() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        consumePendingTopLevelScrollResetIfNeeded()
+    }
+
     override fun onDestroyView() {
         super.onDestroyView()
         voiceHelper.stopRecognition()
@@ -138,12 +146,7 @@ class SearchMobileFragment : Fragment() {
                     val query = binding.etSearch.text.toString()
                     hideKeyboard()
 
-                    if (binding.swGlobalSearch.isChecked) {
-                        val currentLanguage = UserPreferences.currentProvider?.language ?: "es"
-                        viewModel.searchGlobal(query, currentLanguage)
-                    } else {
-                        viewModel.search(query)
-                    }
+                    viewModel.search(query)
                     return@setOnEditorActionListener true
                 }
                 return@setOnEditorActionListener false
@@ -211,6 +214,9 @@ class SearchMobileFragment : Fragment() {
                 SpacingItemDecoration(10.dp(requireContext()))
             )
         }
+
+        binding.swGlobalSearch.isChecked = false
+        binding.swGlobalSearch.visibility = View.GONE
     }
 
     private fun displaySearch(list: List<AppAdapter.Item>, hasMore: Boolean) {
@@ -220,7 +226,9 @@ class SearchMobileFragment : Fragment() {
                 is Movie -> it.itemType = AppAdapter.Type.MOVIE_GRID_MOBILE_ITEM
                 is TvShow -> it.itemType = AppAdapter.Type.TV_SHOW_GRID_MOBILE_ITEM
             }
-        })
+        }) {
+            consumePendingTopLevelScrollResetIfNeeded()
+        }
 
         if (hasMore && viewModel.query != "") {
             appAdapter.setOnLoadMoreListener { viewModel.loadMore() }
@@ -263,8 +271,49 @@ class SearchMobileFragment : Fragment() {
             }
         }
 
-        appAdapter.submitList(allItems)
+        appAdapter.submitList(allItems) {
+            consumePendingTopLevelScrollResetIfNeeded()
+        }
         appAdapter.setOnLoadMoreListener(null) // Desactivamos la carga infinita en la búsqueda global
     }
     // ================================================================
+
+    override fun onTopLevelTabSelected(animate: Boolean) {
+        if (_binding == null) return
+        pendingTopLevelScrollToTop = true
+
+        if (!animate) {
+            consumePendingTopLevelScrollResetIfNeeded()
+            return
+        }
+
+        binding.root.animate().cancel()
+        binding.root.animate()
+            .alpha(0f)
+            .setDuration(200L)
+            .withEndAction {
+                consumePendingTopLevelScrollResetIfNeeded()
+                binding.root.animate()
+                    .alpha(1f)
+                    .setDuration(200L)
+                    .start()
+            }
+            .start()
+    }
+
+    private fun consumePendingTopLevelScrollResetIfNeeded() {
+        val mainActivity = activity as? MainMobileActivity
+        if (mainActivity?.hasPendingTopLevelScrollReset(R.id.search) == true) {
+            pendingTopLevelScrollToTop = true
+        }
+
+        if (!pendingTopLevelScrollToTop || _binding == null || appAdapter.itemCount == 0) {
+            return
+        }
+
+        pendingTopLevelScrollToTop = false
+        mainActivity?.consumePendingTopLevelScrollReset(R.id.search)
+        binding.rvSearch.scrollToPosition(0)
+        binding.rvSearch.post { binding.rvSearch.scrollToPosition(0) }
+    }
 }

@@ -5,7 +5,7 @@
         <layer-list>
             <item android:bottom="-3dp" android:left="-3dp" android:right="-3dp" android:top="-3dp">
                 <shape android:shape="rectangle">
-                    <stroke android:width="3dp" android:color="#FFFFFF" />
+                    <stroke android:width="3dp" android:color="@color/netflix_red" />
                 </shape>
             </item>
         </layer-list>

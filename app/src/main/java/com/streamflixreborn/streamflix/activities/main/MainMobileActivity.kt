@@ -3,8 +3,12 @@ package com.streamflixreborn.streamflix.activities.main
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.view.View
+import android.view.WindowManager
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.viewModels
@@ -16,8 +20,8 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.flowWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.navOptions
 import androidx.navigation.fragment.NavHostFragment
-import androidx.navigation.ui.setupWithNavController
 import com.streamflixreborn.streamflix.BuildConfig
 import com.streamflixreborn.streamflix.R
 import com.streamflixreborn.streamflix.databinding.ActivityMainMobileBinding
@@ -25,6 +29,7 @@ import com.streamflixreborn.streamflix.fragments.player.PlayerMobileFragment
 import com.streamflixreborn.streamflix.ui.UpdateAppMobileDialog
 import com.streamflixreborn.streamflix.providers.Provider
 import com.streamflixreborn.streamflix.providers.Cine24hProvider
+import com.streamflixreborn.streamflix.utils.TopLevelTabFragment
 import com.streamflixreborn.streamflix.utils.UserPreferences
 import com.streamflixreborn.streamflix.utils.getCurrentFragment
 import kotlinx.coroutines.launch
@@ -35,6 +40,9 @@ class MainMobileActivity : FragmentActivity() {
     private val binding get() = _binding!!
 
     private val viewModel by viewModels<MainViewModel>()
+    private var pendingTopLevelScrollDestinationId: Int? = null
+    private var pendingTopLevelScrollAnimate: Boolean = false
+    private var pendingScrollResetDestinationId: Int? = null
 
     private lateinit var updateAppDialog: UpdateAppMobileDialog
 
@@ -52,6 +60,12 @@ class MainMobileActivity : FragmentActivity() {
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
 
         _binding = ActivityMainMobileBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -65,7 +79,7 @@ class MainMobileActivity : FragmentActivity() {
             val isBottomNavVisible = binding.bnvMain.visibility == View.VISIBLE
 
             val bottomPadding = if (isPlayer || isBottomNavVisible) 0 else insets.bottom
-            val topPadding = if (isPlayer) 0 else insets.top
+            val topPadding = 0
 
             view.setPadding(insets.left, topPadding, insets.right, bottomPadding)
             windowInsets
@@ -90,22 +104,35 @@ class MainMobileActivity : FragmentActivity() {
             }
         }
 
-        viewModel.checkUpdate()
-
-        binding.bnvMain.setupWithNavController(navController)
+        binding.bnvMain.setOnItemSelectedListener { item ->
+            animateBottomNavItem(item.itemId)
+            navigateToTopLevelDestination(navController, item.itemId, popToRoot = true)
+        }
         binding.bnvMain.setOnItemReselectedListener { item ->
-            navController.popBackStack(item.itemId, inclusive = true)
-            navController.navigate(item.itemId)
+            animateBottomNavItem(item.itemId)
+            navigateToTopLevelDestination(navController, item.itemId, popToRoot = true)
         }
         
         updateNavigationVisibility()
 
         navController.addOnDestinationChangedListener { _, destination, _ ->
             when (destination.id) {
-                R.id.search, R.id.home, R.id.movies, R.id.tv_shows, R.id.settings -> {
+                R.id.search, R.id.home, R.id.movies, R.id.tv_shows, R.id.settings, R.id.genre, R.id.movie, R.id.tv_show -> {
                     binding.bnvMain.visibility = View.VISIBLE
+                    selectedBottomNavItemId(destination.id)?.let { itemId ->
+                        binding.bnvMain.menu.findItem(itemId)?.isChecked = true
+                    }
                     updateNavigationVisibility()
                     updateImmersiveMode()
+                    val resolvedDestinationId = selectedBottomNavItemId(destination.id) ?: destination.id
+                    if (pendingTopLevelScrollDestinationId == resolvedDestinationId) {
+                        val animate = pendingTopLevelScrollAnimate
+                        pendingTopLevelScrollDestinationId = null
+                        pendingTopLevelScrollAnimate = false
+                        binding.mainContent.post {
+                            (getCurrentFragment() as? TopLevelTabFragment)?.onTopLevelTabSelected(animate)
+                        }
+                    }
                 }
                 else -> binding.bnvMain.visibility = View.GONE
             }
@@ -137,6 +164,10 @@ class MainMobileActivity : FragmentActivity() {
             }
         }
 
+        if (savedInstanceState == null) {
+            viewModel.checkUpdate()
+        }
+
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 val handled = (getCurrentFragment() as? PlayerMobileFragment)?.onBackPressed() ?: false
@@ -165,6 +196,90 @@ class MainMobileActivity : FragmentActivity() {
             tvShowsItem?.title = if (provider.name == "CableVisionHD" || provider.name == "TvporinternetHD") 
                 getString(R.string.main_menu_all_channels) else getString(R.string.main_menu_tv_shows)
         }
+    }
+
+    private fun navigateToTopLevelDestination(
+        navController: androidx.navigation.NavController,
+        destinationId: Int,
+        popToRoot: Boolean = false,
+    ): Boolean {
+        pendingScrollResetDestinationId = destinationId
+
+        if (popToRoot) {
+            navController.popBackStack(destinationId, false)
+        }
+
+        pendingTopLevelScrollDestinationId = destinationId
+        pendingTopLevelScrollAnimate = false
+
+        if (navController.currentDestination?.id == destinationId) {
+            pendingTopLevelScrollDestinationId = null
+            pendingTopLevelScrollAnimate = false
+            (getCurrentFragment() as? TopLevelTabFragment)?.onTopLevelTabSelected(false)
+            return true
+        }
+
+        runCatching {
+            navController.navigate(destinationId, null, navOptions {
+                anim {
+                    enter = R.anim.fade_in
+                    exit = R.anim.fade_out
+                    popEnter = R.anim.fade_in
+                    popExit = R.anim.fade_out
+                }
+                popUpTo(navController.graph.startDestinationId) {
+                    inclusive = false
+                    saveState = true
+                }
+                launchSingleTop = true
+                restoreState = false
+            })
+        }
+        return true
+    }
+
+    fun hasPendingTopLevelScrollReset(destinationId: Int): Boolean =
+        pendingScrollResetDestinationId == destinationId
+
+    fun consumePendingTopLevelScrollReset(destinationId: Int): Boolean {
+        if (pendingScrollResetDestinationId != destinationId) return false
+        pendingScrollResetDestinationId = null
+        return true
+    }
+
+    private fun selectedBottomNavItemId(destinationId: Int): Int? = when (destinationId) {
+        R.id.home -> R.id.home
+        R.id.search -> R.id.search
+        R.id.movies -> R.id.movies
+        R.id.tv_shows -> R.id.tv_shows
+        R.id.settings -> R.id.settings
+        else -> null
+    }
+
+    private fun animateBottomNavItem(itemId: Int) {
+        val itemView = binding.bnvMain.findViewById<View>(itemId) ?: return
+
+        itemView.animate().cancel()
+        itemView.scaleX = 1f
+        itemView.scaleY = 1f
+        itemView.alpha = 1f
+
+        itemView.animate()
+            .scaleX(1.075f)
+            .scaleY(1.075f)
+            .alpha(1f)
+            .setDuration(180L)
+            .setInterpolator(DecelerateInterpolator())
+            .withEndAction {
+                itemView.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .alpha(1f)
+                    .setDuration(260L)
+                    .setInterpolator(OvershootInterpolator(0.28f))
+                    .start()
+            }
+            .start()
     }
 
     fun updateImmersiveMode() {

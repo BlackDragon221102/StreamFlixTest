@@ -1,139 +1,143 @@
 package com.streamflixreborn.streamflix.fragments.genre
 
+import android.os.Parcelable
 import android.util.Log
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streamflixreborn.streamflix.database.AppDatabase
-import com.streamflixreborn.streamflix.models.Genre
-import com.streamflixreborn.streamflix.models.Movie
-import com.streamflixreborn.streamflix.models.TvShow
-import com.streamflixreborn.streamflix.utils.UserPreferences
+import com.streamflixreborn.streamflix.repository.CatalogRepository
+import com.streamflixreborn.streamflix.repository.DefaultCatalogRepository
+import com.streamflixreborn.streamflix.repository.GenreCatalogState
+import com.streamflixreborn.streamflix.repository.GenreSortMode
 import com.streamflixreborn.streamflix.utils.ProviderChangeNotifier
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.transformLatest
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-class GenreViewModel(private val id: String, database: AppDatabase) : ViewModel() {
+class GenreViewModel(
+    private val id: String,
+    database: AppDatabase,
+    private val savedStateHandle: SavedStateHandle,
+) : ViewModel() {
+    private val repository: CatalogRepository = DefaultCatalogRepository(database)
 
-    private val _state = MutableStateFlow<State>(State.Loading)
-    
+    val state: Flow<GenreCatalogState> = repository.genreState
+    val sortMode: StateFlow<GenreSortMode> = repository.genreSortMode
+
+    companion object {
+        private const val KEY_MOBILE_SCROLL_POSITION = "genre_mobile_scroll_position"
+        private const val KEY_MOBILE_SCROLL_OFFSET = "genre_mobile_scroll_offset"
+        private const val KEY_TV_SCROLL_POSITION = "genre_tv_scroll_position"
+        private const val KEY_MOBILE_LAYOUT_STATE = "genre_mobile_layout_state"
+        private const val KEY_RESTORED_GENRE_ID = "genre_restored_genre_id"
+    }
+
+    var savedMobileScrollPosition: Int
+        get() = savedStateHandle[KEY_MOBILE_SCROLL_POSITION] ?: 0
+        private set(value) { savedStateHandle[KEY_MOBILE_SCROLL_POSITION] = value }
+
+    var savedMobileScrollOffset: Int
+        get() = savedStateHandle[KEY_MOBILE_SCROLL_OFFSET] ?: 0
+        private set(value) { savedStateHandle[KEY_MOBILE_SCROLL_OFFSET] = value }
+
+    var savedTvScrollPosition: Int
+        get() = savedStateHandle[KEY_TV_SCROLL_POSITION] ?: 0
+        private set(value) { savedStateHandle[KEY_TV_SCROLL_POSITION] = value }
+
+    var savedMobileLayoutState: Parcelable?
+        get() = savedStateHandle[KEY_MOBILE_LAYOUT_STATE]
+        private set(value) { savedStateHandle[KEY_MOBILE_LAYOUT_STATE] = value }
+
+    private var restoredGenreId: String?
+        get() = savedStateHandle[KEY_RESTORED_GENRE_ID]
+        set(value) { savedStateHandle[KEY_RESTORED_GENRE_ID] = value }
+
     init {
-        // Listen for provider changes and reload data
         viewModelScope.launch {
             ProviderChangeNotifier.providerChangeFlow.collect {
-                getGenre(id)
+                getGenre(id, forceRefresh = true)
             }
         }
-    }
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val state: Flow<State> = combine(
-        _state,
-        _state.transformLatest { state ->
-            when (state) {
-                is State.SuccessLoading -> {
-                    val movies = state.genre.shows
-                        .filterIsInstance<Movie>()
-                    database.movieDao().getByIds(movies.map { it.id })
-                        .collect { emit(it) }
-                }
-                else -> emit(emptyList<Movie>())
-            }
-        },
-        _state.transformLatest { state ->
-            when (state) {
-                is State.SuccessLoading -> {
-                    val tvShows = state.genre.shows
-                        .filterIsInstance<TvShow>()
-                    database.tvShowDao().getByIds(tvShows.map { it.id })
-                        .collect { emit(it) }
-                }
-                else -> emit(emptyList<TvShow>())
-            }
-        },
-    ) { state, moviesDb, tvShowsDb ->
-        when (state) {
-            is State.SuccessLoading -> {
-                State.SuccessLoading(
-                    genre = state.genre.copy(
-                        shows = state.genre.shows.map { item ->
-                            when (item) {
-                                is Movie -> moviesDb.find { it.id == item.id }
-                                    ?.takeIf { !item.isSame(it) }
-                                    ?.let { item.copy().merge(it) }
-                                    ?: item
-                                is TvShow -> tvShowsDb.find { it.id == item.id }
-                                    ?.takeIf { !item.isSame(it) }
-                                    ?.let { item.copy().merge(it) }
-                                    ?: item
-                            }
-                        }
-                    ),
-                    hasMore = state.hasMore
-                )
-            }
-            else -> state
+        if (!repository.showCachedGenre(id)) {
+            getGenre(id)
         }
     }
 
-    private var page = 1
-
-    sealed class State {
-        data object Loading : State()
-        data object LoadingMore : State()
-        data class SuccessLoading(val genre: Genre, val hasMore: Boolean) : State()
-        data class FailedLoading(val error: Exception) : State()
+    fun setSortMode(mode: GenreSortMode) {
+        if (sortMode.value == mode) return
+        repository.setGenreSortMode(mode)
+        getGenre(id, forceRefresh = true)
     }
 
-    init {
-        getGenre(id)
-    }
-
-
-    fun getGenre(id: String) = viewModelScope.launch(Dispatchers.IO) {
-        _state.emit(State.Loading)
-
-        try {
-            val genre = UserPreferences.currentProvider!!.getGenre(id)
-
-            page = 1
-
-            _state.emit(State.SuccessLoading(genre, true))
-        } catch (e: Exception) {
-            Log.e("GenreViewModel", "getGenre: ", e)
-            _state.emit(State.FailedLoading(e))
+    fun getGenre(
+        id: String,
+        forceRefresh: Boolean = false,
+    ) = viewModelScope.launch {
+        runCatching {
+            repository.refreshGenre(id, forceRefresh = forceRefresh)
+        }.onFailure { error ->
+            Log.e("GenreViewModel", "getGenre: ", error)
         }
     }
 
-    fun loadMoreGenreShows() = viewModelScope.launch(Dispatchers.IO) {
-        val currentState = _state.first()
-        if (currentState is State.SuccessLoading) {
-            _state.emit(State.LoadingMore)
-
-            try {
-                val genre = UserPreferences.currentProvider!!.getGenre(id, page + 1)
-
-                page += 1
-
-                _state.emit(
-                    State.SuccessLoading(
-                        genre = Genre(
-                            id = genre.id,
-                            name = genre.name,
-
-                            shows = currentState.genre.shows + genre.shows,
-                        ),
-                        hasMore = genre.shows.isNotEmpty(),
-                    )
-                )
-            } catch (e: Exception) {
-                Log.e("GenreViewModel", "loadMoreGenreShows: ", e)
-                _state.emit(State.FailedLoading(e))
-            }
+    fun loadMoreGenreShows() = viewModelScope.launch {
+        runCatching {
+            repository.loadMoreGenre(id)
+        }.onFailure { error ->
+            Log.e("GenreViewModel", "loadMoreGenreShows: ", error)
         }
+    }
+
+    fun saveMobileScroll(position: Int, offset: Int) {
+        savedMobileScrollPosition = position.coerceAtLeast(0)
+        savedMobileScrollOffset = offset
+        Log.d("GenreScroll", "Saved mobile scroll position=$savedMobileScrollPosition offset=$savedMobileScrollOffset")
+    }
+
+    fun saveMobileLayoutState(state: Parcelable?) {
+        savedMobileLayoutState = state
+        Log.d("GenreScroll", "Saved mobile layout state=${state != null}")
+    }
+
+    fun saveTvScroll(position: Int) {
+        savedTvScrollPosition = position.coerceAtLeast(0)
+        Log.d("GenreScroll", "Saved TV scroll position=$savedTvScrollPosition")
+    }
+
+    fun shouldAttemptRestore(genreId: String): Boolean = restoredGenreId != genreId
+
+    fun hasPendingRestore(genreId: String): Boolean {
+        if (!shouldAttemptRestore(genreId)) return false
+        return savedMobileLayoutState != null ||
+            savedMobileScrollPosition > 0 ||
+            savedMobileScrollOffset != 0 ||
+            savedTvScrollPosition > 0
+    }
+
+    fun markRestoreCompleted(genreId: String) {
+        restoredGenreId = genreId
+        Log.d("GenreScroll", "Marked restore completed for genreId=$genreId")
+    }
+
+    fun resetRestoreStateForGenre(genreId: String) {
+        if (restoredGenreId == genreId) {
+            restoredGenreId = null
+            Log.d("GenreScroll", "Reset restore state for genreId=$genreId")
+        }
+    }
+
+    fun prepareForNextRestore(genreId: String) {
+        restoredGenreId = null
+        Log.d("GenreScroll", "Restore armed for next visit to genreId=$genreId")
+    }
+
+    fun clearSavedScroll() {
+        savedMobileScrollPosition = 0
+        savedMobileScrollOffset = 0
+        savedTvScrollPosition = 0
+        savedMobileLayoutState = null
+        restoredGenreId = null
+        Log.d("GenreScroll", "Cleared saved scroll and restore state")
     }
 }

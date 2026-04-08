@@ -4,14 +4,14 @@
     <item android:state_selected="true">
         <shape android:shape="rectangle">
             <corners android:radius="360dp" />
-            <solid android:color="#FFFFFF" />
+            <solid android:color="@color/netflix_red" />
         </shape>
     </item>
 
     <item>
         <shape android:shape="rectangle">
             <corners android:radius="360dp" />
-            <solid android:color="#CC646464" />
+            <solid android:color="#88979AA0" />
         </shape>
     </item>
 

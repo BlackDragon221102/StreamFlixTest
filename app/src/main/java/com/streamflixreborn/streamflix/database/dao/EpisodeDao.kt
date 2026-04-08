@@ -92,12 +92,44 @@ interface EpisodeDao {
     @Query("DELETE FROM episodes")
     fun deleteAll()
 
+    @Query(
+        """
+        DELETE FROM episodes
+        WHERE isWatched = 0
+          AND watchedDate IS NULL
+          AND lastEngagementTimeUtcMillis IS NULL
+          AND lastPlaybackPositionMillis IS NULL
+          AND durationMillis IS NULL
+        """
+    )
+    fun deleteCatalogOnlyEntries()
+
+    @Transaction
+    fun upsertCatalog(episode: Episode) {
+        val existing = getById(episode.id)
+        if (existing != null) {
+            existing.mergeCatalogFrom(episode)
+            update(existing)
+        } else {
+            insert(episode.copy().apply {
+                isWatched = false
+                watchedDate = null
+                watchHistory = null
+            })
+        }
+    }
+
+    @Transaction
+    fun upsertCatalogAll(episodes: List<Episode>) {
+        episodes.forEach(::upsertCatalog)
+    }
+
     @Transaction
     fun save(episode: Episode) {
         val provider = UserPreferences.currentProvider?.name ?: "Unknown"
         val existing = getById(episode.id)
         if (existing != null) {
-            existing.merge(episode)
+            existing.mergeCatalogFrom(episode).applyUserStateFrom(episode)
             update(existing)
             Log.d("DatabaseVerify", "[$provider] REAL-TIME UPDATE Episode: ${existing.title} (Watched: ${existing.isWatched}, Hist: ${existing.watchHistory != null})")
         } else {

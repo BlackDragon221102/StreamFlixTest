@@ -7,6 +7,7 @@ import com.streamflixreborn.streamflix.database.AppDatabase
 import com.streamflixreborn.streamflix.providers.AniWorldProvider
 import com.streamflixreborn.streamflix.providers.SerienStreamProvider
 import com.streamflixreborn.streamflix.utils.CacheUtils
+import com.streamflixreborn.streamflix.utils.CatalogRefreshScheduler
 import com.streamflixreborn.streamflix.utils.DnsResolver
 import com.streamflixreborn.streamflix.utils.UserPreferences
 
@@ -22,6 +23,7 @@ class StreamFlixApp : Application() {
 
         // 1. Inizializzazione preferenze (con applicationContext)
         UserPreferences.setup(this)
+        UserPreferences.currentProvider = UserPreferences.currentProvider
         
         // 2. Configurazione DNS
         DnsResolver.setDnsUrl(UserPreferences.dohProviderUrl)
@@ -41,6 +43,9 @@ class StreamFlixApp : Application() {
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
+        if (level == TRIM_MEMORY_UI_HIDDEN) {
+            CatalogRefreshScheduler.scheduleIfNeeded(this)
+        }
         if (level >= TRIM_MEMORY_RUNNING_LOW) {
             CacheUtils.clearAppCache(this)
         }

@@ -30,6 +30,8 @@ import kotlin.coroutines.resume
 
 class WebViewResolver(private val context: Context) {
 
+    class ResolutionException(message: String) : Exception(message)
+
     private var webView: WebView? = null
     private var dialog: AlertDialog? = null
     private val mutex = Mutex()
@@ -55,8 +57,14 @@ class WebViewResolver(private val context: Context) {
                 continuation.invokeOnCancellation { cleanup() }
             }
         }
-        if (result == null) Log.e(TAG, "[WebView] Global Timeout for $url")
-        return@withLock result ?: "<html><body>Timeout</body></html>"
+        if (result == null) {
+            Log.e(TAG, "[WebView] Global Timeout for $url")
+            throw ResolutionException("Timeout durante il bypass WebView")
+        }
+        if (result.contains("User cancelled", ignoreCase = true)) {
+            throw ResolutionException("Bypass WebView annullato dall'utente")
+        }
+        return@withLock result
     }
 
     @SuppressLint("SetJavaScriptEnabled")

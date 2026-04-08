@@ -84,11 +84,11 @@ class SeasonViewModel(
             val episodeMap = episodes.associateBy { it.id }
 
             ids.chunked(400).forEach { chunk ->
-                database.episodeDao()
-                    .getByIds(chunk)
-                    .forEach { episodeDb ->
-                        episodeMap[episodeDb.id]?.merge(episodeDb)
-                    }
+                    database.episodeDao()
+                        .getByIds(chunk)
+                        .forEach { episodeDb ->
+                            episodeMap[episodeDb.id]?.applyUserStateFrom(episodeDb)
+                        }
             }
 
             val tvShow = TvShow(tvShowId)
@@ -98,7 +98,7 @@ class SeasonViewModel(
                 episode.season = season
             }
 
-            database.episodeDao().insertAll(episodes)
+            database.episodeDao().upsertCatalogAll(episodes)
 
             EpisodeManager.addEpisodes(EpisodeManager.convertToVideoTypeEpisodes(episodes, database, seasonNumber))
             _state.emit(State.SuccessLoadingEpisodes(episodes))

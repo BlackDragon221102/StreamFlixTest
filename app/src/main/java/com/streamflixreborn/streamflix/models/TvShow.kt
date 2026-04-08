@@ -4,6 +4,7 @@ import androidx.room.Entity
 import androidx.room.Ignore
 import androidx.room.PrimaryKey
 import com.streamflixreborn.streamflix.adapters.AppAdapter
+import com.streamflixreborn.streamflix.utils.ArtworkResolver
 import com.streamflixreborn.streamflix.utils.format
 import com.streamflixreborn.streamflix.utils.toCalendar
 
@@ -40,6 +41,7 @@ class TvShow(
 ) : Show, AppAdapter.Item {
 
     var released = released?.toCalendar()
+    var favoriteAddedAtUtcMillis: Long? = null
 
     var isWatching: Boolean = true
 
@@ -60,14 +62,35 @@ class TvShow(
 
     fun isSame(tvShow: TvShow): Boolean {
         if (isFavorite != tvShow.isFavorite) return false
+        if (favoriteAddedAtUtcMillis != tvShow.favoriteAddedAtUtcMillis) return false
         if (isWatching != tvShow.isWatching) return false
         return true
     }
 
-    fun merge(tvShow: TvShow): TvShow {
+    fun mergeCatalogFrom(tvShow: TvShow): TvShow {
+        this.title = tvShow.title.ifBlank { this.title }
+        this.overview = tvShow.overview?.takeIf { it.isNotBlank() } ?: this.overview
+        this.runtime = tvShow.runtime ?: this.runtime
+        this.trailer = tvShow.trailer ?: this.trailer
+        this.quality = tvShow.quality ?: this.quality
+        this.rating = tvShow.rating ?: this.rating
+        this.poster = ArtworkResolver.choosePreferredImage(this.poster, tvShow.poster)
+        this.banner = ArtworkResolver.choosePreferredImage(this.banner, tvShow.banner)
+        this.imdbId = tvShow.imdbId ?: this.imdbId
+        this.providerName = tvShow.providerName ?: this.providerName
+        this.released = tvShow.released ?: this.released
+        return this
+    }
+
+    fun applyUserStateFrom(tvShow: TvShow): TvShow {
         this.isFavorite = tvShow.isFavorite
+        this.favoriteAddedAtUtcMillis = tvShow.favoriteAddedAtUtcMillis
         this.isWatching = tvShow.isWatching
         return this
+    }
+
+    fun merge(tvShow: TvShow): TvShow {
+        return mergeCatalogFrom(tvShow).applyUserStateFrom(tvShow)
     }
 
 
@@ -137,6 +160,7 @@ class TvShow(
         if (recommendations != other.recommendations) return false
         if (released != other.released) return false
         if (isFavorite != other.isFavorite) return false
+        if (favoriteAddedAtUtcMillis != other.favoriteAddedAtUtcMillis) return false
         if (isWatching != other.isWatching) return false
         if (isFavorite != other.isFavorite) return false
         if (!::itemType.isInitialized || !other::itemType.isInitialized) return false
@@ -161,6 +185,7 @@ class TvShow(
         result = 31 * result + recommendations.hashCode()
         result = 31 * result + (released?.hashCode() ?: 0)
         result = 31 * result + isFavorite.hashCode()
+        result = 31 * result + (favoriteAddedAtUtcMillis?.hashCode() ?: 0)
         result = 31 * result + isWatching.hashCode()
         result = 31 * result + (if (::itemType.isInitialized) itemType.hashCode() else 0)
         return result

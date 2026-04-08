@@ -22,6 +22,7 @@ import com.streamflixreborn.streamflix.models.Category
 import com.streamflixreborn.streamflix.models.Episode
 import com.streamflixreborn.streamflix.models.Movie
 import com.streamflixreborn.streamflix.models.TvShow
+import com.streamflixreborn.streamflix.repository.HomeCatalogState
 import com.streamflixreborn.streamflix.utils.viewModelsFactory
 import kotlinx.coroutines.Runnable
 import com.streamflixreborn.streamflix.utils.CacheUtils
@@ -81,17 +82,18 @@ class HomeTvFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.state.flowWithLifecycle(lifecycle, Lifecycle.State.STARTED).collect { state ->
                 when (state) {
-                    HomeViewModel.State.Loading -> binding.isLoading.apply {
+                    HomeCatalogState.Loading -> binding.isLoading.apply {
                         root.visibility = View.VISIBLE
                         pbIsLoading.visibility = View.VISIBLE
                         gIsLoadingRetry.visibility = View.GONE
                     }
-                    is HomeViewModel.State.SuccessLoading -> {
+                    is HomeCatalogState.Success -> {
                         displayHome(state.categories)
+                        binding.vgvHome.scheduleLayoutAnimation()
                         binding.vgvHome.visibility = View.VISIBLE
                         binding.isLoading.root.visibility = View.GONE
                     }
-                    is HomeViewModel.State.FailedLoading -> {
+                    is HomeCatalogState.Error -> {
                         val code = (state.error as? retrofit2.HttpException)?.code()
                         if (code == 409 && !hasAutoCleared409) {
                             hasAutoCleared409 = true
@@ -143,6 +145,7 @@ class HomeTvFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        swiperHandler.removeCallbacksAndMessages(null)
         appAdapter.onSaveInstanceState(binding.vgvHome)
         _binding = null
     }
@@ -150,7 +153,10 @@ class HomeTvFragment : Fragment() {
 
     private var swiperHasLastFocus: Boolean = false
     fun updateBackground(uri: String?, swiperHasFocus: Boolean? = false) {
-        if (swiperHasFocus == null && !swiperHasLastFocus) return
+        if (uri.isNullOrEmpty()) return
+        if (swiperHasFocus == null && !swiperHasLastFocus) {
+            swiperHasLastFocus = true
+        }
 
         Glide.with(requireContext())
             .load(uri)

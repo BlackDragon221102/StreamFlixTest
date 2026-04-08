@@ -37,11 +37,26 @@ class Episode(
         return true
     }
 
-    fun merge(episode: Episode): Episode {
+    fun mergeCatalogFrom(episode: Episode): Episode {
+        this.number = episode.number
+        this.title = episode.title?.takeIf { it.isNotBlank() } ?: this.title
+        this.released = episode.released ?: this.released
+        this.poster = episode.poster ?: this.poster
+        this.overview = episode.overview?.takeIf { it.isNotBlank() } ?: this.overview
+        this.tvShow = episode.tvShow ?: this.tvShow
+        this.season = episode.season ?: this.season
+        return this
+    }
+
+    fun applyUserStateFrom(episode: Episode): Episode {
         this.isWatched = episode.isWatched
         this.watchedDate = episode.watchedDate
         this.watchHistory = episode.watchHistory
         return this
+    }
+
+    fun merge(episode: Episode): Episode {
+        return mergeCatalogFrom(episode).applyUserStateFrom(episode)
     }
 
 

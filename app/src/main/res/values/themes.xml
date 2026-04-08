@@ -3,7 +3,8 @@
     <style name="AppTheme.Mobile" parent="Theme.AppCompat">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
-        <item name="app_background_color">#181818</item>
+        <item name="app_background_color">@color/app_background</item>
+        <item name="colorAccent">@color/netflix_red</item>
         <item name="home_gradient_drawable">@drawable/bg_home_gradient_default</item>
         <item name="movie_banner_gradient_drawable">@drawable/bg_movie_banner_gradient_default</item>
         <item name="tv_show_banner_gradient_drawable">@drawable/bg_tv_show_banner_gradient_default</item>
@@ -11,7 +12,20 @@
     </style>
 
     <style name="BottomNavLabelStyle" parent="Widget.Design.BottomNavigationView">
-        <item name="android:textSize">11sp</item>
+        <item name="android:textSize">9sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="BottomNavActiveIndicatorStyle" parent="">
+        <item name="android:width">42dp</item>
+        <item name="android:height">22dp</item>
+        <item name="android:color">@color/nav_indicator_mobile</item>
+        <item name="shapeAppearance">@style/BottomNavActiveIndicatorShape</item>
+    </style>
+
+    <style name="BottomNavActiveIndicatorShape" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">11dp</item>
     </style>
 
     <!-- Tema Nero Amoled/Oled per Mobile -->
@@ -31,10 +45,10 @@
 
     <!-- Tema di Default per TV -->
     <style name="AppTheme.Tv" parent="Theme.Leanback">
-        <item name="app_background_color">#181818</item>
+        <item name="app_background_color">@color/app_background</item>
         <item name="preferenceTheme">@style/PreferenceThemeOverlayLeanback</item>
         <item name="alertDialogTheme">@style/Theme.AppCompat.Dialog.Alert</item>
-        <item name="colorAccent">#FFFFFF</item>
+        <item name="colorAccent">@color/netflix_red</item>
         <item name="colorControlActivated">#FFFFFF</item>
         <item name="colorControlNormal">#BDBDBD</item>
         <item name="android:windowBackground">@drawable/bg_splash_screen</item>

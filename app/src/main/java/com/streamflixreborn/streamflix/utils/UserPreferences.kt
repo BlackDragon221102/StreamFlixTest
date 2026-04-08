@@ -2,7 +2,7 @@ package com.streamflixreborn.streamflix.utils
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.util.Log // <-- Import Log
+import android.util.Log
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import com.streamflixreborn.streamflix.BuildConfig
@@ -10,14 +10,14 @@ import com.streamflixreborn.streamflix.R
 import com.streamflixreborn.streamflix.fragments.player.settings.PlayerSettingsView
 import com.streamflixreborn.streamflix.providers.Provider
 import com.streamflixreborn.streamflix.providers.Provider.Companion.providers
-import com.streamflixreborn.streamflix.providers.TmdbProvider
+import com.streamflixreborn.streamflix.providers.StreamingCommunityProvider
 import androidx.core.content.edit
 import com.streamflixreborn.streamflix.database.AppDatabase
 import org.json.JSONObject
 
 object UserPreferences {
 
-    private const val TAG = "UserPrefsDebug" // <-- TAG per i Log
+    private const val TAG = "UserPreferences"
 
     private lateinit var prefs: SharedPreferences
 
@@ -36,41 +36,37 @@ object UserPreferences {
 
     lateinit var providerCache: JSONObject
 
+    private val streamingCommunityProvider: Provider by lazy {
+        providers.keys.find { it is StreamingCommunityProvider && it.language == "it" }
+            ?: StreamingCommunityProvider("it")
+    }
+
     fun setup(context: Context) {
-        Log.d(TAG, "setup() called with context: $context")
         val prefsName = "${BuildConfig.APPLICATION_ID}.preferences"
-        Log.d(TAG, "SharedPreferences name: $prefsName")
         prefs = context.getSharedPreferences(
             prefsName,
             Context.MODE_PRIVATE,
         )
         if (::prefs.isInitialized) {
-            Log.d(TAG, "prefs initialized successfully in setup. Hash: ${prefs.hashCode()}")
-
             val jsonString = Key.PROVIDER_CACHE.getString() ?: "{}"
             providerCache = runCatching { JSONObject(jsonString) }.getOrDefault(JSONObject())
-
         } else {
-            Log.e(TAG, "prefs FAILED to initialize in setup.")
+            Log.e(TAG, "SharedPreferences non inizializzate correttamente")
         }
     }
 
 
     var currentProvider: Provider?
         get() {
-            val providerName = Key.CURRENT_PROVIDER.getString()
-            if (providerName?.startsWith("TMDb (") == true && providerName.endsWith(")")) {
-                val lang = providerName.substringAfter("TMDb (").substringBefore(")")
-                return TmdbProvider(lang)
-            }
-            return Provider.providers.keys.find { it.name == providerName }
+            return streamingCommunityProvider
         }
         set(value) {
+            val nextProvider = streamingCommunityProvider
             // CRITICO: Resetta l'istanza del database prima di cambiare provider
             // per forzare la creazione di un nuovo database file corretto.
             AppDatabase.resetInstance()
 
-            Key.CURRENT_PROVIDER.setString(value?.name)
+            Key.CURRENT_PROVIDER.setString(nextProvider.name)
             // Notify all ViewModels that the provider has changed
             ProviderChangeNotifier.notifyProviderChanged()
         }
@@ -92,11 +88,8 @@ object UserPreferences {
 
     fun clearProviderCache(providerName: String) {
         if (providerCache.has(providerName)) {
-            Log.d(TAG, "CACHE: Removing stored data for $providerName")
             providerCache.remove(providerName)
             Key.PROVIDER_CACHE.setString(providerCache.toString())
-        } else {
-            Log.d(TAG, "CACHE: No existing data to clear for $providerName")
         }
     }
 
@@ -236,30 +229,17 @@ object UserPreferences {
         set(value) = Key.SUBTITLE_NAME.setString(value)
     var streamingcommunityDomain: String
         get() {
-            Log.d(TAG, "streamingcommunityDomain GET called")
             if (!::prefs.isInitialized) {
-                Log.e(TAG, "streamingcommunityDomain GET: prefs IS NOT INITIALIZED!")
-                return "PREFS_NOT_INIT_ERROR" // Restituisce un valore di errore evidente
+                Log.e(TAG, "streamingcommunityDomain letto prima dell'inizializzazione prefs")
+                return DEFAULT_STREAMINGCOMMUNITY_DOMAIN
             }
-            Log.d(TAG, "streamingcommunityDomain GET: prefs hash: ${prefs.hashCode()}")
             val storedValue = prefs.getString(Key.STREAMINGCOMMUNITY_DOMAIN.name, null)
-            Log.d(TAG, "streamingcommunityDomain GET: storedValue from prefs: '$storedValue'")
-            val returnValue = if (storedValue.isNullOrEmpty()) {
-                Log.d(TAG, "streamingcommunityDomain GET: storedValue is null or empty, returning DEFAULT: '$DEFAULT_STREAMINGCOMMUNITY_DOMAIN'")
-                DEFAULT_STREAMINGCOMMUNITY_DOMAIN
-            } else {
-                Log.d(TAG, "streamingcommunityDomain GET: storedValue is NOT null or empty, returning storedValue: '$storedValue'")
-                storedValue
-            }
-            Log.d(TAG, "streamingcommunityDomain GET: final returnValue: '$returnValue'")
-            return returnValue
+            return if (storedValue.isNullOrEmpty()) DEFAULT_STREAMINGCOMMUNITY_DOMAIN else storedValue
         }
         set(value) {
             val oldDomain = if (::prefs.isInitialized) prefs.getString(Key.STREAMINGCOMMUNITY_DOMAIN.name, null) else null
-            Log.d(TAG, "streamingcommunityDomain SET called with value: '$value' (Old: '$oldDomain')")
-            
             if (!::prefs.isInitialized) {
-                Log.e(TAG, "streamingcommunityDomain SET: prefs IS NOT INITIALIZED!")
+                Log.e(TAG, "streamingcommunityDomain scritto prima dell'inizializzazione prefs")
                 return 
             }
 

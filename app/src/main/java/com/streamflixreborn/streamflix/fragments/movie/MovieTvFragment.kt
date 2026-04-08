@@ -118,5 +118,19 @@ class MovieTvFragment : Fragment() {
                 ?.copy()
                 ?.apply { itemType = AppAdapter.Type.MOVIE_RECOMMENDATIONS_TV },
         ))
+
+        animateDetailEntrance()
+    }
+
+    private fun animateDetailEntrance() {
+        binding.ivMovieBanner.apply {
+            alpha = 0f
+            animate().alpha(1f).setDuration(260L).start()
+        }
+        binding.vgvMovie.apply {
+            alpha = 0f
+            translationY = 16f
+            animate().alpha(1f).translationY(0f).setDuration(280L).start()
+        }
     }
 }

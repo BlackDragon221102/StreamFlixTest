@@ -136,5 +136,19 @@ class TvShowTvFragment : Fragment() {
                 ?.copy()
                 ?.apply { itemType = AppAdapter.Type.TV_SHOW_RECOMMENDATIONS_TV },
         ))
+
+        animateDetailEntrance()
+    }
+
+    private fun animateDetailEntrance() {
+        binding.ivTvShowBanner.apply {
+            alpha = 0f
+            animate().alpha(1f).setDuration(260L).start()
+        }
+        binding.vgvTvShow.apply {
+            alpha = 0f
+            translationY = 16f
+            animate().alpha(1f).translationY(0f).setDuration(280L).start()
+        }
     }
 }

@@ -25,8 +25,9 @@ object OpenSubtitles {
     suspend fun download(
         subtitle: Subtitle,
     ): Uri = withContext(Dispatchers.IO) {
+        val subtitleFileName = subtitle.subFileName ?: "subtitle.srt"
         val zip = File.createTempFile(
-            "${File(subtitle.subFileName).nameWithoutExtension}-",
+            "${File(subtitleFileName).nameWithoutExtension}-",
             ".${File(subtitle.subDownloadLink).extension}"
         )
 
@@ -34,7 +35,7 @@ object OpenSubtitles {
             FileOutputStream(zip).use { output -> input.copyTo(output) }
         }
 
-        val subtitleFile = File("${zip.parent}${File.separator}${subtitle.subFileName}")
+        val subtitleFile = File("${zip.parent}${File.separator}$subtitleFileName")
 
         if (subtitleFile.exists()) {
             subtitleFile.delete()

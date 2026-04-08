@@ -4,40 +4,67 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:paddingBottom="16dp">
+    android:paddingStart="18dp"
+    android:paddingTop="18dp"
+    android:paddingEnd="18dp"
+    android:paddingBottom="18dp">
 
     <TextView
         android:id="@+id/tv_genre_name"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="32dp"
-        android:gravity="center"
+        android:layout_marginTop="6dp"
+        android:fontFamily="sans-serif-medium"
         android:textColor="#FFFFFF"
-        android:textSize="20sp"
+        android:textSize="30sp"
         android:textStyle="bold"
-        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        tools:text="Genre" />
+        tools:text="Azione" />
 
-    <View
-        android:layout_width="0dp"
-        android:layout_height="1dp"
-        android:layout_marginEnd="16dp"
-        android:background="#FFFFFF"
-        app:layout_constraintBottom_toBottomOf="@id/tv_genre_name"
-        app:layout_constraintEnd_toStartOf="@id/tv_genre_name"
+    <TextView
+        android:id="@+id/tv_genre_sort_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:text="Ordina per:"
+        android:textColor="#B8FFFFFF"
+        android:textSize="14sp"
+        android:textStyle="bold"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="@id/tv_genre_name" />
+        app:layout_constraintTop_toBottomOf="@id/tv_genre_name" />
+
+    <TextView
+        android:id="@+id/tv_genre_sort"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_genre_sort_button_mobile"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:minHeight="38dp"
+        android:paddingStart="14dp"
+        android:paddingTop="9dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="9dp"
+        android:text="Data di uscita"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        app:drawableEndCompat="@drawable/ic_sort_chevron_down_mobile"
+        android:drawablePadding="6dp"
+        app:drawableTint="#B8FFFFFF"
+        app:layout_constraintBaseline_toBaselineOf="@id/tv_genre_sort_label"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:text="Data di uscita" />
 
     <View
         android:layout_width="0dp"
         android:layout_height="1dp"
-        android:layout_marginStart="16dp"
-        android:background="#FFFFFF"
-        app:layout_constraintBottom_toBottomOf="@id/tv_genre_name"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toEndOf="@id/tv_genre_name"
-        app:layout_constraintTop_toTopOf="@id/tv_genre_name" />
+        android:layout_marginTop="18dp"
+        android:background="#18FFFFFF"
+        app:layout_constraintTop_toBottomOf="@id/tv_genre_sort_label"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

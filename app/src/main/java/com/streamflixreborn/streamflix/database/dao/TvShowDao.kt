@@ -26,7 +26,7 @@ interface TvShowDao {
     @Query("SELECT * FROM tv_shows WHERE id IN (:ids)")
     fun getByIds(ids: List<String>): Flow<List<TvShow>>
 
-    @Query("SELECT * FROM tv_shows WHERE isFavorite = 1")
+    @Query("SELECT * FROM tv_shows WHERE isFavorite = 1 ORDER BY IFNULL(favoriteAddedAtUtcMillis, 0) DESC, title COLLATE NOCASE ASC")
     fun getFavorites(): Flow<List<TvShow>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -53,12 +53,40 @@ interface TvShowDao {
     @Query("DELETE FROM tv_shows")
     fun deleteAll()
 
+    @Query(
+        """
+        DELETE FROM tv_shows
+        WHERE isFavorite = 0
+          AND isWatching = 0
+        """
+    )
+    fun deleteCatalogOnlyEntries()
+
+    @Transaction
+    fun upsertCatalog(tvShow: TvShow) {
+        val existing = getById(tvShow.id)
+        if (existing != null) {
+            existing.mergeCatalogFrom(tvShow)
+            update(existing)
+        } else {
+            insert(tvShow.copy().apply {
+                isFavorite = false
+                isWatching = false
+            })
+        }
+    }
+
+    @Transaction
+    fun upsertCatalogAll(tvShows: List<TvShow>) {
+        tvShows.forEach(::upsertCatalog)
+    }
+
     @Transaction
     fun save(tvShow: TvShow) {
         val provider = UserPreferences.currentProvider?.name ?: "Unknown"
         val existing = getById(tvShow.id)
         if (existing != null) {
-            val merged = existing.merge(tvShow)
+            val merged = existing.mergeCatalogFrom(tvShow).applyUserStateFrom(tvShow)
             update(merged)
             Log.d("DatabaseVerify", "[$provider] REAL-TIME UPDATE TV Show: ${merged.title} (Fav: ${merged.isFavorite}, Watching: ${merged.isWatching})")
         } else {

@@ -97,7 +97,7 @@ class MainTvActivity : FragmentActivity() {
                     .error(R.drawable.ic_provider_default_logo)
                     .into(header.ivNavigationHeaderIcon)
                 header.tvNavigationHeaderTitle.text = UserPreferences.currentProvider?.name
-                header.tvNavigationHeaderSubtitle.text = getString(R.string.main_menu_change_provider)
+                header.tvNavigationHeaderSubtitle.text = getString(R.string.main_menu_settings)
 
                 setOnOpenListener {
                     header.tvNavigationHeaderTitle.visibility = View.VISIBLE
@@ -109,8 +109,7 @@ class MainTvActivity : FragmentActivity() {
                 }
 
                 setOnClickListener {
-                    // Navigazione manuale per evitare dipendenza da Safe Args Directions non generate
-                    navController.navigate(R.id.providers)
+                    navController.navigate(R.id.settings)
                 }
             }
 
@@ -148,6 +147,10 @@ class MainTvActivity : FragmentActivity() {
             }
         }
 
+        if (savedInstanceState == null) {
+            viewModel.checkUpdate()
+        }
+
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 when (navController.currentDestination?.id) {
@@ -169,11 +172,6 @@ class MainTvActivity : FragmentActivity() {
         })
     }
 
-    override fun onResume() {
-        super.onResume()
-        viewModel.checkUpdate()
-    }
-    
     private fun updateNavigationVisibility() {
         UserPreferences.currentProvider?.let { provider ->
             binding.navMain.menu.findItem(R.id.movies)?.isVisible = Provider.supportsMovies(provider)

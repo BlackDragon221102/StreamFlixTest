@@ -16,11 +16,13 @@ import com.streamflixreborn.streamflix.fragments.home.HomeMobileFragmentDirectio
 import com.streamflixreborn.streamflix.models.Episode
 import com.streamflixreborn.streamflix.models.Movie
 import com.streamflixreborn.streamflix.models.TvShow
-import com.streamflixreborn.streamflix.utils.UserPreferences
+import com.streamflixreborn.streamflix.repository.DefaultUserContentRepository
 import com.streamflixreborn.streamflix.utils.format
 import com.streamflixreborn.streamflix.utils.getCurrentFragment
 import com.streamflixreborn.streamflix.utils.toActivity
-import com.streamflixreborn.streamflix.providers.Provider
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.util.Calendar
 
 class ShowOptionsMobileDialog(
@@ -31,21 +33,10 @@ class ShowOptionsMobileDialog(
     private val binding = DialogShowOptionsMobileBinding.inflate(LayoutInflater.from(context))
 
     private val database = AppDatabase.getInstance(context)
+    private val userContentRepository = DefaultUserContentRepository(database)
 
     private fun checkProviderAndRun(show: AppAdapter.Item, action: () -> Unit) {
-        val providerName = when(show){
-            is Movie -> show.providerName
-            is TvShow -> show.providerName
-            is Episode -> show.tvShow?.providerName
-            else -> null
-        }
-
-        if (!providerName.isNullOrBlank() && providerName != UserPreferences.currentProvider?.name) {
-            Provider.providers.keys.find { it.name == providerName }?.let {
-                UserPreferences.currentProvider = it
-                AppDatabase.setup(context)
-            }
-        }
+        // StreamingCommunity-only UX: non cambiamo provider in base all'item.
         action()
     }
 
@@ -120,29 +111,13 @@ class ShowOptionsMobileDialog(
         binding.btnOptionShowWatched.apply {
             setOnClickListener {
                 checkProviderAndRun(episode) {
-                    AppDatabase.getInstance(context).episodeDao().save(episode.copy().apply {
-                        merge(episode)
-                        isWatched = !isWatched
-                        if (isWatched) {
-                            watchedDate = Calendar.getInstance()
-                            watchHistory = null
-                        } else {
-                            watchedDate = null
-                        }
-                    })
-
-                    // NUOVA LOGICA: Aggiorna lo stato isWatching della serie TV madre
-                    episode.tvShow?.let { tvShow ->
-                        val episodeDao = AppDatabase.getInstance(context).episodeDao()
-                        val isStillWatching = episodeDao.hasAnyWatchHistoryForTvShow(tvShow.id)
-
-                        // Se l'episodio è stato marcato come VISTO E non ci sono altri
-                        // episodi con cronologia, impostiamo isWatching a false.
-                        if (episode.isWatched && !isStillWatching) {
-                            AppDatabase.getInstance(context).tvShowDao().save(tvShow.copy().apply {
-                                merge(tvShow)
-                                isWatching = false
-                            })
+                    CoroutineScope(Dispatchers.IO).launch {
+                        val updatedEpisode = userContentRepository.setEpisodeWatched(episode, !episode.isWatched)
+                        updatedEpisode.tvShow?.let { tvShow ->
+                            val episodeDao = AppDatabase.getInstance(context).episodeDao()
+                            if (updatedEpisode.isWatched && !episodeDao.hasAnyWatchHistoryForTvShow(tvShow.id)) {
+                                userContentRepository.setTvShowWatching(tvShow, false)
+                            }
                         }
                     }
                 }
@@ -159,44 +134,18 @@ class ShowOptionsMobileDialog(
         binding.btnOptionEpisodeMarkAllPreviousWatched.apply {
             setOnClickListener {
                 checkProviderAndRun(episode) {
-                    val episodeDao = AppDatabase.getInstance(context).episodeDao()
-                    val episodeNumber = episode.number
-                    val tvShowId = episode.tvShow?.id ?: return@checkProviderAndRun
-                    val allEpisodes = episodeDao.getEpisodesByTvShowId(tvShowId)
-
-                    val targetState = !episode.isWatched // If current is watched, we unwatch; else, we mark watched
-                    val now = Calendar.getInstance()
-
-                    for (ep in allEpisodes) {
-                        if (ep.number <= episodeNumber && ep.isWatched != targetState) {
-                            episodeDao.save(ep.copy().apply {
-                                merge(ep)
-                                isWatched = targetState
-                                watchedDate = if (targetState) now else null
-                                watchHistory = if (targetState) null else watchHistory
-                            })
-                        }
-                    }
-
-                    // Logica aggiuntiva per isWatching:
-                    // Se l'obiettivo era marcare come VISTO, e non ci sono cronologie, si imposta isWatching a false.
-                    if (targetState) {
+                    CoroutineScope(Dispatchers.IO).launch {
+                        val episodeDao = AppDatabase.getInstance(context).episodeDao()
+                        val targetState = !episode.isWatched
+                        userContentRepository.markEpisodesUpTo(episode, targetState)
                         episode.tvShow?.let { tvShow ->
-                            if (!episodeDao.hasAnyWatchHistoryForTvShow(tvShow.id)) {
-                                AppDatabase.getInstance(context).tvShowDao().save(tvShow.copy().apply {
-                                    merge(tvShow)
-                                    isWatching = false
-                                })
+                            if (targetState) {
+                                if (!episodeDao.hasAnyWatchHistoryForTvShow(tvShow.id)) {
+                                    userContentRepository.setTvShowWatching(tvShow, false)
+                                }
+                            } else {
+                                userContentRepository.setTvShowWatching(tvShow, true)
                             }
-                        }
-                    }
-                    // Se l'obiettivo era marcare come NON VISTO, impostiamo isWatching a true per farlo riapparire.
-                    if (!targetState) {
-                        episode.tvShow?.let { tvShow ->
-                            AppDatabase.getInstance(context).tvShowDao().save(tvShow.copy().apply {
-                                merge(tvShow)
-                                isWatching = true
-                            })
                         }
                     }
                 }
@@ -214,18 +163,13 @@ class ShowOptionsMobileDialog(
         binding.btnOptionProgramClear.apply {
             setOnClickListener {
                 checkProviderAndRun(episode) {
-                    AppDatabase.getInstance(context).episodeDao().save(episode.copy().apply {
-                        merge(episode)
-                        watchHistory = null
-                    })
-                    episode.tvShow?.let { tvShow ->
-                        // Rimuoviamo isWatching solo se NON ci sono altri episodi in corso
-                        val episodeDao = AppDatabase.getInstance(context).episodeDao()
-                        if (!episodeDao.hasAnyWatchHistoryForTvShow(tvShow.id)) {
-                            AppDatabase.getInstance(context).tvShowDao().save(tvShow.copy().apply {
-                                merge(tvShow)
-                                isWatching = false
-                            })
+                    CoroutineScope(Dispatchers.IO).launch {
+                        userContentRepository.clearEpisodeProgress(episode)
+                        episode.tvShow?.let { tvShow ->
+                            val episodeDao = AppDatabase.getInstance(context).episodeDao()
+                            if (!episodeDao.hasAnyWatchHistoryForTvShow(tvShow.id)) {
+                                userContentRepository.setTvShowWatching(tvShow, false)
+                            }
                         }
                     }
                 }
@@ -257,10 +201,9 @@ class ShowOptionsMobileDialog(
         binding.btnOptionShowFavorite.apply {
             setOnClickListener {
                 checkProviderAndRun(movie) {
-                    AppDatabase.getInstance(context).movieDao().save(movie.copy().apply {
-                        merge(movie)
-                        isFavorite = !isFavorite
-                    })
+                    CoroutineScope(Dispatchers.IO).launch {
+                        userContentRepository.toggleMovieFavorite(movie)
+                    }
                 }
 
                 hide()
@@ -276,16 +219,9 @@ class ShowOptionsMobileDialog(
         binding.btnOptionShowWatched.apply {
             setOnClickListener {
                 checkProviderAndRun(movie) {
-                    AppDatabase.getInstance(context).movieDao().save(movie.copy().apply {
-                        merge(movie)
-                        isWatched = !isWatched
-                        if (isWatched) {
-                            watchedDate = Calendar.getInstance()
-                            watchHistory = null
-                        } else {
-                            watchedDate = null
-                        }
-                    })
+                    CoroutineScope(Dispatchers.IO).launch {
+                        userContentRepository.setMovieWatched(movie, !movie.isWatched)
+                    }
                 }
 
                 hide()
@@ -301,10 +237,9 @@ class ShowOptionsMobileDialog(
         binding.btnOptionProgramClear.apply {
             setOnClickListener {
                 checkProviderAndRun(movie) {
-                    AppDatabase.getInstance(context).movieDao().save(movie.copy().apply {
-                        merge(movie)
-                        watchHistory = null
-                    })
+                    CoroutineScope(Dispatchers.IO).launch {
+                        userContentRepository.clearMovieProgress(movie)
+                    }
                 }
 
                 hide()
@@ -333,10 +268,9 @@ class ShowOptionsMobileDialog(
         binding.btnOptionShowFavorite.apply {
             setOnClickListener {
                 checkProviderAndRun(tvShow) {
-                    AppDatabase.getInstance(context).tvShowDao().save(tvShow.copy().apply {
-                        merge(tvShow)
-                        isFavorite = !isFavorite
-                    })
+                    CoroutineScope(Dispatchers.IO).launch {
+                        userContentRepository.toggleTvShowFavorite(tvShow)
+                    }
                 }
 
                 hide()

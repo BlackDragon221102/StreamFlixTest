@@ -447,8 +447,10 @@ class TmdbProvider(override val language: String) : Provider {
                 TMDb3.Params.AppendToResponse.Movie.RECOMMENDATIONS,
                 TMDb3.Params.AppendToResponse.Movie.VIDEOS,
                 TMDb3.Params.AppendToResponse.Movie.EXTERNAL_IDS,
+                TMDb3.Params.AppendToResponse.Movie.IMAGES,
             ),
-            language = language
+            language = language,
+            includeImageLanguage = TMDb3.italianIncludeImageLanguage(language),
         ).let { movie ->
             Movie(
                 id = movie.id.toString(),
@@ -461,8 +463,16 @@ class TmdbProvider(override val language: String) : Provider {
                     ?.firstOrNull { it.site == TMDb3.Video.VideoSite.YOUTUBE }
                     ?.let { "https://www.youtube.com/watch?v=${it.key}" },
                 rating = movie.voteAverage.toDouble(),
-                poster = movie.posterPath?.original,
-                banner = movie.backdropPath?.original,
+                poster = TMDb3.pickImagePathWithFallback(
+                    defaultPath = movie.posterPath,
+                    images = movie.images?.posters,
+                    language = language
+                )?.original,
+                banner = TMDb3.pickImagePathWithFallback(
+                    defaultPath = movie.backdropPath,
+                    images = movie.images?.backdrops,
+                    language = language
+                )?.original,
                 imdbId = movie.externalIds?.imdbId,
 
                 genres = movie.genres.map { genre ->
@@ -517,8 +527,10 @@ class TmdbProvider(override val language: String) : Provider {
                 TMDb3.Params.AppendToResponse.Tv.RECOMMENDATIONS,
                 TMDb3.Params.AppendToResponse.Tv.VIDEOS,
                 TMDb3.Params.AppendToResponse.Tv.EXTERNAL_IDS,
+                TMDb3.Params.AppendToResponse.Tv.IMAGES,
             ),
-            language = language
+            language = language,
+            includeImageLanguage = TMDb3.italianIncludeImageLanguage(language),
         ).let { tv ->
             TvShow(
                 id = tv.id.toString(),
@@ -530,8 +542,16 @@ class TmdbProvider(override val language: String) : Provider {
                     ?.firstOrNull { it.site == TMDb3.Video.VideoSite.YOUTUBE }
                     ?.let { "https://www.youtube.com/watch?v=${it.key}" },
                 rating = tv.voteAverage.toDouble(),
-                poster = tv.posterPath?.original,
-                banner = tv.backdropPath?.original,
+                poster = TMDb3.pickImagePathWithFallback(
+                    defaultPath = tv.posterPath,
+                    images = tv.images?.posters,
+                    language = language
+                )?.original,
+                banner = TMDb3.pickImagePathWithFallback(
+                    defaultPath = tv.backdropPath,
+                    images = tv.images?.backdrops,
+                    language = language
+                )?.original,
                 imdbId = tv.externalIds?.imdbId,
 
                 seasons = tv.seasons.map { season ->

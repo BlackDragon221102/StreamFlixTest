@@ -172,9 +172,9 @@ class TvShowViewModel(id: String, private val database: AppDatabase) : ViewModel
             val tvShow = UserPreferences.currentProvider!!.getTvShow(id)
 
             database.tvShowDao().getByIdAsFlow(tvShow.id).first()?.let { tvShowDb ->
-                tvShow.merge(tvShowDb)
+                tvShow.applyUserStateFrom(tvShowDb)
             }
-            database.tvShowDao().insert(tvShow)
+            database.tvShowDao().upsertCatalog(tvShow)
 
             val tvShowCopy = tvShow.copy()
             tvShow.seasons.forEach { season ->
@@ -201,7 +201,7 @@ class TvShowViewModel(id: String, private val database: AppDatabase) : ViewModel
                 database.episodeDao()
                     .getByIds(chunk)
                     .forEach { episodeDb ->
-                        episodeMap[episodeDb.id]?.merge(episodeDb)
+                        episodeMap[episodeDb.id]?.applyUserStateFrom(episodeDb)
                     }
             }
 
@@ -210,7 +210,7 @@ class TvShowViewModel(id: String, private val database: AppDatabase) : ViewModel
                 episode.season = season
             }
 
-            database.episodeDao().insertAll(episodes)
+            database.episodeDao().upsertCatalogAll(episodes)
 
             _seasonState.emit(SeasonState.SuccessLoading(tvShow, season, episodes))
         } catch (e: Exception) {
@@ -219,3 +219,4 @@ class TvShowViewModel(id: String, private val database: AppDatabase) : ViewModel
         }
     }
 }
+

@@ -91,9 +91,9 @@ class MovieViewModel(id: String, private val database: AppDatabase) : ViewModel(
             val movie = UserPreferences.currentProvider!!.getMovie(id)
 
             database.movieDao().getByIdAsFlow(id).first()?.let { movieDb ->
-                movie.merge(movieDb)
+                movie.applyUserStateFrom(movieDb)
             }
-            database.movieDao().insert(movie)
+            database.movieDao().upsertCatalog(movie)
 
             _state.emit(State.SuccessLoading(movie))
         } catch (e: Exception) {
@@ -102,3 +102,4 @@ class MovieViewModel(id: String, private val database: AppDatabase) : ViewModel(
         }
     }
 }
+

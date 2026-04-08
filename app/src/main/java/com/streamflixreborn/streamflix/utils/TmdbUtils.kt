@@ -11,6 +11,134 @@ import com.streamflixreborn.streamflix.utils.TMDb3.w500
 
 object TmdbUtils {
 
+    data class Artwork(
+        val poster: String?,
+        val banner: String?,
+        val heroPoster: String?,
+        val hasTextlessHero: Boolean,
+    )
+
+    private fun pickTextlessImagePathWithFallback(
+        defaultPath: String?,
+        images: List<TMDb3.Images.FileImage>?,
+        language: String?,
+    ): String? {
+        if (images.isNullOrEmpty()) return defaultPath
+
+        val textless = images
+            .asSequence()
+            .filter { it.iso639 == null }
+            .sortedByDescending { it.voteAverage ?: 0f }
+            .map { it.filePath }
+            .firstOrNull()
+
+        return textless
+            ?: TMDb3.pickImagePathWithFallback(defaultPath, images, language)
+            ?: defaultPath
+    }
+
+    private fun pickTextlessImagePath(
+        images: List<TMDb3.Images.FileImage>?,
+    ): String? {
+        if (images.isNullOrEmpty()) return null
+        return images
+            .asSequence()
+            .filter { it.iso639 == null }
+            .sortedByDescending { it.voteAverage ?: 0f }
+            .map { it.filePath }
+            .firstOrNull()
+    }
+
+    suspend fun getMovieArtworkById(id: Int, language: String? = null): Artwork? {
+        if (!UserPreferences.enableTmdb) return null
+        return try {
+            val details = TMDb3.Movies.details(
+                movieId = id,
+                appendToResponse = listOf(
+                    TMDb3.Params.AppendToResponse.Movie.IMAGES,
+                ),
+                language = language,
+                includeImageLanguage = TMDb3.italianIncludeImageLanguage(language),
+            )
+
+            val localizedPoster = TMDb3.pickImagePathWithFallback(
+                defaultPath = details.posterPath,
+                images = details.images?.posters,
+                language = language
+            )?.original
+
+            val localizedBanner = TMDb3.pickImagePathWithFallback(
+                defaultPath = details.backdropPath,
+                images = details.images?.backdrops,
+                language = language
+            )?.original
+
+            val textlessHeroPoster = pickTextlessImagePathWithFallback(
+                defaultPath = details.posterPath,
+                images = details.images?.posters,
+                language = language
+            )?.original
+
+            val textlessBackdrop = pickTextlessImagePath(
+                images = details.images?.backdrops
+            )?.original
+
+            Artwork(
+                poster = localizedPoster,
+                banner = localizedBanner,
+                heroPoster = textlessBackdrop ?: textlessHeroPoster ?: localizedBanner,
+                hasTextlessHero = (textlessBackdrop != null || textlessHeroPoster != null),
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    suspend fun getTvShowArtworkById(id: Int, language: String? = null): Artwork? {
+        if (!UserPreferences.enableTmdb) return null
+        return try {
+            val details = TMDb3.TvSeries.details(
+                seriesId = id,
+                appendToResponse = listOf(
+                    TMDb3.Params.AppendToResponse.Tv.IMAGES,
+                ),
+                language = language,
+                includeImageLanguage = TMDb3.italianIncludeImageLanguage(language),
+            )
+
+            val localizedPoster = TMDb3.pickImagePathWithFallback(
+                defaultPath = details.posterPath,
+                images = details.images?.posters,
+                language = language
+            )?.original
+
+            val localizedBanner = TMDb3.pickImagePathWithFallback(
+                defaultPath = details.backdropPath,
+                images = details.images?.backdrops,
+                language = language
+            )?.original
+
+            val textlessHeroPoster = pickTextlessImagePathWithFallback(
+                defaultPath = details.posterPath,
+                images = details.images?.posters,
+                language = language
+            )?.original
+
+            val textlessBackdrop = pickTextlessImagePath(
+                images = details.images?.backdrops
+            )?.original
+
+            Artwork(
+                poster = localizedPoster,
+                banner = localizedBanner,
+                heroPoster = textlessBackdrop ?: textlessHeroPoster ?: localizedBanner,
+                hasTextlessHero = (textlessBackdrop != null || textlessHeroPoster != null),
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     suspend fun getMovie(title: String, year: Int? = null, language: String? = null): Movie? {
         if (!UserPreferences.enableTmdb) return null
         return try {
@@ -26,8 +154,10 @@ object TmdbUtils {
                     TMDb3.Params.AppendToResponse.Movie.RECOMMENDATIONS,
                     TMDb3.Params.AppendToResponse.Movie.VIDEOS,
                     TMDb3.Params.AppendToResponse.Movie.EXTERNAL_IDS,
+                    TMDb3.Params.AppendToResponse.Movie.IMAGES,
                 ),
-                language = language
+                language = language,
+                includeImageLanguage = TMDb3.italianIncludeImageLanguage(language),
             )
 
             Movie(
@@ -41,8 +171,16 @@ object TmdbUtils {
                     ?.firstOrNull { it.site == TMDb3.Video.VideoSite.YOUTUBE }
                     ?.let { "https://www.youtube.com/watch?v=${it.key}" },
                 rating = details.voteAverage.toDouble(),
-                poster = details.posterPath?.original,
-                banner = details.backdropPath?.original,
+                poster = TMDb3.pickImagePathWithFallback(
+                    defaultPath = details.posterPath,
+                    images = details.images?.posters,
+                    language = language
+                )?.original,
+                banner = TMDb3.pickImagePathWithFallback(
+                    defaultPath = details.backdropPath,
+                    images = details.images?.backdrops,
+                    language = language
+                )?.original,
                 imdbId = details.externalIds?.imdbId,
                 genres = details.genres.map { Genre(it.id.toString(), it.name) },
                 cast = details.credits?.cast?.map { People(it.id.toString(), it.name, it.profilePath?.w500) } ?: listOf(),
@@ -65,8 +203,10 @@ object TmdbUtils {
                     TMDb3.Params.AppendToResponse.Tv.RECOMMENDATIONS,
                     TMDb3.Params.AppendToResponse.Tv.VIDEOS,
                     TMDb3.Params.AppendToResponse.Tv.EXTERNAL_IDS,
+                    TMDb3.Params.AppendToResponse.Tv.IMAGES,
                 ),
-                language = language
+                language = language,
+                includeImageLanguage = TMDb3.italianIncludeImageLanguage(language),
             )
 
             TvShow(
@@ -79,8 +219,16 @@ object TmdbUtils {
                     ?.firstOrNull { it.site == TMDb3.Video.VideoSite.YOUTUBE }
                     ?.let { "https://www.youtube.com/watch?v=${it.key}" },
                 rating = details.voteAverage.toDouble(),
-                poster = details.posterPath?.original,
-                banner = details.backdropPath?.original,
+                poster = TMDb3.pickImagePathWithFallback(
+                    defaultPath = details.posterPath,
+                    images = details.images?.posters,
+                    language = language
+                )?.original,
+                banner = TMDb3.pickImagePathWithFallback(
+                    defaultPath = details.backdropPath,
+                    images = details.images?.backdrops,
+                    language = language
+                )?.original,
                 imdbId = details.externalIds?.imdbId,
                 seasons = details.seasons.map {
                     Season(
@@ -126,8 +274,10 @@ object TmdbUtils {
                     TMDb3.Params.AppendToResponse.Movie.RECOMMENDATIONS,
                     TMDb3.Params.AppendToResponse.Movie.VIDEOS,
                     TMDb3.Params.AppendToResponse.Movie.EXTERNAL_IDS,
+                    TMDb3.Params.AppendToResponse.Movie.IMAGES,
                 ),
-                language = language
+                language = language,
+                includeImageLanguage = TMDb3.italianIncludeImageLanguage(language),
             )
 
             Movie(
@@ -141,8 +291,16 @@ object TmdbUtils {
                     ?.firstOrNull { it.site == TMDb3.Video.VideoSite.YOUTUBE }
                     ?.let { "https://www.youtube.com/watch?v=${it.key}" },
                 rating = details.voteAverage.toDouble(),
-                poster = details.posterPath?.original,
-                banner = details.backdropPath?.original,
+                poster = TMDb3.pickImagePathWithFallback(
+                    defaultPath = details.posterPath,
+                    images = details.images?.posters,
+                    language = language
+                )?.original,
+                banner = TMDb3.pickImagePathWithFallback(
+                    defaultPath = details.backdropPath,
+                    images = details.images?.backdrops,
+                    language = language
+                )?.original,
                 imdbId = details.externalIds?.imdbId,
                 genres = details.genres.map { Genre(it.id.toString(), it.name) },
                 cast = details.credits?.cast?.map { People(it.id.toString(), it.name, it.profilePath?.w500) } ?: listOf(),
@@ -160,8 +318,10 @@ object TmdbUtils {
                     TMDb3.Params.AppendToResponse.Tv.RECOMMENDATIONS,
                     TMDb3.Params.AppendToResponse.Tv.VIDEOS,
                     TMDb3.Params.AppendToResponse.Tv.EXTERNAL_IDS,
+                    TMDb3.Params.AppendToResponse.Tv.IMAGES,
                 ),
-                language = language
+                language = language,
+                includeImageLanguage = TMDb3.italianIncludeImageLanguage(language),
             )
 
             TvShow(
@@ -174,8 +334,16 @@ object TmdbUtils {
                     ?.firstOrNull { it.site == TMDb3.Video.VideoSite.YOUTUBE }
                     ?.let { "https://www.youtube.com/watch?v=${it.key}" },
                 rating = details.voteAverage.toDouble(),
-                poster = details.posterPath?.original,
-                banner = details.backdropPath?.original,
+                poster = TMDb3.pickImagePathWithFallback(
+                    defaultPath = details.posterPath,
+                    images = details.images?.posters,
+                    language = language
+                )?.original,
+                banner = TMDb3.pickImagePathWithFallback(
+                    defaultPath = details.backdropPath,
+                    images = details.images?.backdrops,
+                    language = language
+                )?.original,
                 imdbId = details.externalIds?.imdbId,
                 seasons = details.seasons.map {
                     Season(

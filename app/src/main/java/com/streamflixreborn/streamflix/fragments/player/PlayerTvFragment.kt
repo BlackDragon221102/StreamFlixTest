@@ -55,6 +55,8 @@ import com.streamflixreborn.streamflix.models.Episode
 import com.streamflixreborn.streamflix.models.Movie
 import com.streamflixreborn.streamflix.models.Video
 import com.streamflixreborn.streamflix.models.WatchItem
+import com.streamflixreborn.streamflix.repository.DefaultUserContentRepository
+import com.streamflixreborn.streamflix.repository.UserContentRepository
 import com.streamflixreborn.streamflix.ui.PlayerTvView
 import com.streamflixreborn.streamflix.utils.DnsResolver
 import com.streamflixreborn.streamflix.utils.EpisodeManager
@@ -93,14 +95,13 @@ class PlayerTvFragment : Fragment() {
 
     private val args by navArgs<PlayerTvFragmentArgs>()
     private val database by lazy { AppDatabase.getInstance(requireContext()) }
+    private val userContentRepository: UserContentRepository by lazy { DefaultUserContentRepository(database) }
     private val viewModel by viewModelsFactory { PlayerViewModel(args.videoType, args.id) }
 
     private lateinit var player: ExoPlayer
     private lateinit var httpDataSource: HttpDataSource.Factory
     private lateinit var dataSourceFactory: DataSource.Factory
     private lateinit var mediaSession: MediaSession
-    private lateinit var progressHandler: android.os.Handler
-    private lateinit var progressRunnable: Runnable
     private lateinit var gestureHelper: PlayerGestureHelper
 
     private var servers = listOf<Video.Server>()
@@ -108,6 +109,22 @@ class PlayerTvFragment : Fragment() {
 
     private var currentVideo: Video? = null
     private var currentServer: Video.Server? = null
+    private val playerHttpClient by lazy {
+        OkHttpClient.Builder()
+            .dns(DnsResolver.doh)
+            .build()
+    }
+    private val progressHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val progressRunnable = object : Runnable {
+        override fun run() {
+            if (::player.isInitialized && player.isPlaying) {
+                val show = player.currentPosition in 3000..120000
+                showSkipIntroButton(show)
+                progressHandler.postDelayed(this, 1000)
+            }
+        }
+    }
+    private var playbackListener: Player.Listener? = null
 
     private val chooserReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -439,6 +456,9 @@ class PlayerTvFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        if (::gestureHelper.isInitialized) {
+            gestureHelper.release()
+        }
         player.release()
         mediaSession.release()
         stopProgressHandler()
@@ -634,7 +654,16 @@ class PlayerTvFragment : Fragment() {
 
                 when (videoType) {
                     is Video.Type.Movie -> {
-                        (watchItem as? Movie)?.let { database.movieDao().update(it) }
+                        (watchItem as? Movie)?.let { movie ->
+                            viewLifecycleOwner.lifecycleScope.launch {
+                                userContentRepository.saveMovieProgress(
+                                    movie = movie,
+                                    history = movie.watchHistory,
+                                    watched = movie.isWatched,
+                                    watchedDate = movie.watchedDate,
+                                )
+                            }
+                        }
                     }
                     is Video.Type.Episode -> {
                         (watchItem as? Episode)?.let { episode ->
@@ -645,7 +674,14 @@ class PlayerTvFragment : Fragment() {
                                 database.episodeDao().resetProgressionFromEpisode(videoType.id)
                             }
 
-                            database.episodeDao().update(episode)
+                            viewLifecycleOwner.lifecycleScope.launch {
+                                userContentRepository.saveEpisodeProgress(
+                                    episode = episode,
+                                    history = episode.watchHistory,
+                                    watched = episode.isWatched,
+                                    watchedDate = episode.watchedDate,
+                                )
+                            }
 
                             episode.tvShow?.let { tvShow ->
                                 database.tvShowDao().getById(tvShow.id)
@@ -657,10 +693,9 @@ class PlayerTvFragment : Fragment() {
                                     true 
                                 }
 
-                                database.tvShowDao().save(tvShow.copy().apply {
-                                    merge(tvShow)
-                                    isWatching = isWatchingValue
-                                })
+                                viewLifecycleOwner.lifecycleScope.launch {
+                                    userContentRepository.setTvShowWatching(tvShow, isWatchingValue)
+                                }
                             }
                         }
                     }
@@ -826,7 +861,8 @@ class PlayerTvFragment : Fragment() {
             }
         }
 
-        player.addListener(object : Player.Listener {
+        playbackListener?.let(player::removeListener)
+        playbackListener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 super.onPlaybackStateChanged(playbackState)
 
@@ -876,7 +912,16 @@ class PlayerTvFragment : Fragment() {
 
                     when (videoType) {
                         is Video.Type.Movie -> {
-                            (watchItem as? Movie)?.let { database.movieDao().update(it) }
+                            (watchItem as? Movie)?.let { movie ->
+                                viewLifecycleOwner.lifecycleScope.launch {
+                                    userContentRepository.saveMovieProgress(
+                                        movie = movie,
+                                        history = movie.watchHistory,
+                                        watched = movie.isWatched,
+                                        watchedDate = movie.watchedDate,
+                                    )
+                                }
+                            }
                         }
 
                         is Video.Type.Episode -> {
@@ -884,18 +929,26 @@ class PlayerTvFragment : Fragment() {
                                 if (player.hasFinished()) {
                                     database.episodeDao().resetProgressionFromEpisode(videoType.id)
                                 }
-                                database.episodeDao().update(episode)
+                                viewLifecycleOwner.lifecycleScope.launch {
+                                    userContentRepository.saveEpisodeProgress(
+                                        episode = episode,
+                                        history = episode.watchHistory,
+                                        watched = episode.isWatched,
+                                        watchedDate = episode.watchedDate,
+                                    )
+                                }
 
                                 episode.tvShow?.let { tvShow ->
                                     database.tvShowDao().getById(tvShow.id)
                                 }?.let { tvShow ->
                                     val episodeDao = database.episodeDao()
                                     val isStillWatching = episodeDao.hasAnyWatchHistoryForTvShow(tvShow.id)
-                                    
-                                    database.tvShowDao().save(tvShow.copy().apply {
-                                        merge(tvShow)
-                                        isWatching = !player.hasReallyFinished() || isStillWatching
-                                    })
+                                    viewLifecycleOwner.lifecycleScope.launch {
+                                        userContentRepository.setTvShowWatching(
+                                            tvShow,
+                                            !player.hasReallyFinished() || isStillWatching
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -913,7 +966,8 @@ class PlayerTvFragment : Fragment() {
                 super.onPlayerError(error)
                 Log.e("PlayerTvFragment", "onPlayerError: ", error)
             }
-        })
+        }
+        player.addListener(playbackListener!!)
 
         if (currentPosition == 0L) {
             val videoType = args.videoType
@@ -946,20 +1000,11 @@ class PlayerTvFragment : Fragment() {
                 this.currentPosition >= (this.duration - UserPreferences.autoplayBuffer * 1000)
     }
     private fun startProgressHandler() {
-        progressHandler = android.os.Handler(android.os.Looper.getMainLooper())
-        progressRunnable = Runnable {
-            if (player.isPlaying) {
-                val show = player.currentPosition in 3000..120000
-                showSkipIntroButton(show)
-            }
-            progressHandler.postDelayed(progressRunnable, 1000)
-        }
+        progressHandler.removeCallbacks(progressRunnable)
         progressHandler.post(progressRunnable)
     }
     private fun stopProgressHandler() {
-        if (::progressHandler.isInitialized) {
-            progressHandler.removeCallbacks(progressRunnable)
-        }
+        progressHandler.removeCallbacks(progressRunnable)
     }
     private fun showSkipIntroButton(show: Boolean) {
         val btnSkipIntro = binding.pvPlayer.controller.binding.btnSkipIntro
@@ -978,15 +1023,15 @@ class PlayerTvFragment : Fragment() {
 
     private fun initializePlayer(extraBuffering: Boolean) {
         if (::player.isInitialized) {
+            stopProgressHandler()
+            playbackListener?.let(player::removeListener)
+            playbackListener = null
             player.release()
             mediaSession.release()
         }
         currentExtraBuffering = extraBuffering
 
-        val okHttpClient = OkHttpClient.Builder()
-            .dns(DnsResolver.doh)
-            .build()
-        httpDataSource = OkHttpDataSource.Factory(okHttpClient)
+        httpDataSource = OkHttpDataSource.Factory(playerHttpClient)
 
         dataSourceFactory = DefaultDataSource.Factory(requireContext(), httpDataSource)
         

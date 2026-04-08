@@ -109,6 +109,7 @@ class TvShowMobileFragment : Fragment() {
             adapter = appAdapter.apply {
                 stateRestorationPolicy = RecyclerView.Adapter.StateRestorationPolicy.PREVENT_WHEN_EMPTY
             }
+            setPadding(paddingLeft, paddingTop, paddingRight, 88.dp(requireContext()))
             addItemDecoration(
                 SpacingItemDecoration(20.dp(requireContext()))
             )
@@ -140,5 +141,19 @@ class TvShowMobileFragment : Fragment() {
                 ?.copy()
                 ?.apply { itemType = AppAdapter.Type.TV_SHOW_RECOMMENDATIONS_MOBILE },
         ))
+
+        animateDetailEntrance()
+    }
+
+    private fun animateDetailEntrance() {
+        binding.ivTvShowBanner.apply {
+            alpha = 0f
+            animate().alpha(1f).setDuration(240L).start()
+        }
+        binding.rvTvShow.apply {
+            alpha = 0f
+            translationY = 14f
+            animate().alpha(1f).translationY(0f).setDuration(260L).start()
+        }
     }
 }

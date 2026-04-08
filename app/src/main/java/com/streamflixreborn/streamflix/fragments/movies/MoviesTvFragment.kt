@@ -14,9 +14,8 @@ import com.streamflixreborn.streamflix.R
 import com.streamflixreborn.streamflix.adapters.AppAdapter
 import com.streamflixreborn.streamflix.database.AppDatabase
 import com.streamflixreborn.streamflix.databinding.FragmentMoviesTvBinding
-import com.streamflixreborn.streamflix.models.Movie
-import com.streamflixreborn.streamflix.providers.Provider
-import com.streamflixreborn.streamflix.utils.UserPreferences
+import com.streamflixreborn.streamflix.models.Category
+import com.streamflixreborn.streamflix.repository.MoviesCatalogState
 import com.streamflixreborn.streamflix.utils.CacheUtils
 import com.streamflixreborn.streamflix.utils.viewModelsFactory
 import kotlinx.coroutines.launch
@@ -50,44 +49,43 @@ class MoviesTvFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.state.flowWithLifecycle(lifecycle, Lifecycle.State.STARTED).collect { state ->
                 when (state) {
-                    MoviesViewModel.State.Loading -> binding.isLoading.apply {
+                    MoviesCatalogState.Loading -> binding.isLoading.apply {
                         root.visibility = View.VISIBLE
                         pbIsLoading.visibility = View.VISIBLE
                         gIsLoadingRetry.visibility = View.GONE
+                        binding.vgvMovies.visibility = View.GONE
                     }
-                    MoviesViewModel.State.LoadingMore -> appAdapter.isLoading = true
-                    is MoviesViewModel.State.SuccessLoading -> {
-                        displayMovies(state.movies, state.hasMore)
+                    is MoviesCatalogState.Success -> {
+                        // Usiamo le categories (le righe)
+                        displayMovies(state.categories)
                         appAdapter.isLoading = false
                         binding.vgvMovies.visibility = View.VISIBLE
                         binding.isLoading.root.visibility = View.GONE
                     }
-                    is MoviesViewModel.State.FailedLoading -> {
+                    is MoviesCatalogState.Error -> {
                         val code = (state.error as? retrofit2.HttpException)?.code()
                         if (code == 409 && !hasAutoCleared409) {
                             hasAutoCleared409 = true
                             CacheUtils.clearAppCache(requireContext())
-                            android.widget.Toast.makeText(requireContext(), getString(com.streamflixreborn.streamflix.R.string.clear_cache_done_409), android.widget.Toast.LENGTH_SHORT).show()
+                            Toast.makeText(requireContext(), getString(R.string.clear_cache_done_409), Toast.LENGTH_SHORT).show()
                             if (appAdapter.isLoading) appAdapter.isLoading = false
-                            viewModel.getMovies()
+                            // Chiamiamo la nuova funzione del ViewModel
+                            viewModel.loadNetflixStyleCategories()
                             return@collect
                         }
-                        Toast.makeText(
-                            requireContext(),
-                            state.error.message ?: "",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        Toast.makeText(requireContext(), state.error.message ?: "", Toast.LENGTH_SHORT).show()
                         if (appAdapter.isLoading) {
                             appAdapter.isLoading = false
                         } else {
                             binding.isLoading.apply {
                                 pbIsLoading.visibility = View.GONE
                                 gIsLoadingRetry.visibility = View.VISIBLE
-                                btnIsLoadingRetry.setOnClickListener { viewModel.getMovies() }
+                                // Chiamiamo la nuova funzione del ViewModel
+                                btnIsLoadingRetry.setOnClickListener { viewModel.loadNetflixStyleCategories() }
                                 btnIsLoadingClearCache.setOnClickListener {
                                     CacheUtils.clearAppCache(requireContext())
-                                    android.widget.Toast.makeText(requireContext(), getString(com.streamflixreborn.streamflix.R.string.clear_cache_done), android.widget.Toast.LENGTH_SHORT).show()
-                                    viewModel.getMovies()
+                                    Toast.makeText(requireContext(), getString(R.string.clear_cache_done), Toast.LENGTH_SHORT).show()
+                                    viewModel.loadNetflixStyleCategories()
                                 }
                                 binding.vgvMovies.visibility = View.GONE
                             }
@@ -103,7 +101,6 @@ class MoviesTvFragment : Fragment() {
         _binding = null
     }
 
-
     private fun initializeMovies() {
         binding.vgvMovies.apply {
             adapter = appAdapter.apply {
@@ -115,15 +112,25 @@ class MoviesTvFragment : Fragment() {
         binding.root.requestFocus()
     }
 
-    private fun displayMovies(movies: List<Movie>, hasMore: Boolean) {
-        appAdapter.submitList(movies.onEach {
-            it.itemType = AppAdapter.Type.MOVIE_GRID_TV_ITEM
+    private fun displayMovies(categories: List<Category>) {
+        appAdapter.submitList(categories.mapIndexed { index, category ->
+            if (index == 0 && category.name == Category.FEATURED) {
+                // BANNER GIGANTE PER LA TV
+                category.itemType = AppAdapter.Type.CATEGORY_TV_SWIPER
+                category.list.forEach { movie ->
+                    movie.itemType = AppAdapter.Type.MOVIE_TV_ITEM
+                }
+            } else {
+                // RIGHE NORMALI PER LA TV
+                category.itemType = AppAdapter.Type.CATEGORY_TV_ITEM
+                category.list.forEach { movie ->
+                    movie.itemType = AppAdapter.Type.MOVIE_TV_ITEM
+                }
+            }
+            category
         })
 
-        if (hasMore) {
-            appAdapter.setOnLoadMoreListener { viewModel.loadMoreMovies() }
-        } else {
-            appAdapter.setOnLoadMoreListener(null)
-        }
+        appAdapter.setOnLoadMoreListener(null)
     }
 }
+
